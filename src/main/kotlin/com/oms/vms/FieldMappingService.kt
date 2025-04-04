@@ -55,24 +55,6 @@ class FieldMappingService(
     }
 
     /**
-     * 필드 매핑 규칙 일괄 업데이트
-     */
-    suspend fun updateMappings(
-        vmsType: String,
-        mappings: Map<String, String>
-    ): VmsMappingDocument {
-        log.info("$vmsType 유형의 매핑 규칙 일괄 업데이트: ${mappings.size}개 항목")
-        
-        val mappingRules = fieldMappingRepository.getMappingRules(vmsType)
-        val updatedRule = mappingRules.copy(
-            mappings = mappings,
-            updatedAt = LocalDateTime.now()
-        )
-        
-        return fieldMappingRepository.updateMappingRules(updatedRule)
-    }
-
-    /**
      * 필드 매핑 규칙 삭제
      */
     suspend fun removeFieldMapping(

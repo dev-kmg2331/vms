@@ -61,7 +61,7 @@ class EmstoneNvrTest {
             .defaultHeader(HttpHeaders.AUTHORIZATION, "Basic $authToken")
             .build()
 
-        vms = EmstoneNvr(webClient, reactiveMongoRepo)
+        vms = EmstoneNvr(webClient, vmsConfig, reactiveMongoRepo)
     }
 
     @AfterEach

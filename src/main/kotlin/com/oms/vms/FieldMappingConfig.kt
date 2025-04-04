@@ -1,10 +1,11 @@
 package com.oms.vms
 
+import com.oms.api.exception.ApiAccessException
 import org.bson.Document
+import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 import org.springframework.context.annotation.Configuration
-import org.springframework.expression.spel.standard.SpelExpressionParser
-import org.springframework.expression.spel.support.StandardEvaluationContext
+import org.springframework.http.HttpStatus
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
@@ -36,39 +37,47 @@ data class FieldTransformation(
  * 필드 변환 유형
  * 다양한 변환 유형 지원
  */
-/**
- * 필드 변환 유형
- * 각 변환 유형이 자신의 변환 로직을 직접 구현
- */
 enum class TransformationType {
-    BOOLEAN_CONVERSION {
+    DEFAULT_CONVERSION {
         override fun apply(
-            document: Document,
+            source: Document,
             unifiedCameraMap: MutableMap<String, Any?>,
             transformation: FieldTransformation
         ) {
-            val sourceValue = document[transformation.sourceField]
+            if (source[transformation.sourceField] != null) {
+                unifiedCameraMap[transformation.targetField] = source[transformation.sourceField]
+            }
+        }
+    },
+
+    BOOLEAN_CONVERSION {
+        override fun apply(
+            source: Document,
+            unifiedCameraMap: MutableMap<String, Any?>,
+            transformation: FieldTransformation
+        ) {
+            val sourceValue = source[transformation.sourceField]
             if (sourceValue != null) {
                 val result = when (sourceValue) {
                     is Boolean -> sourceValue
                     is String -> sourceValue.equals("true", ignoreCase = true) ||
                             sourceValue.equals("yes", ignoreCase = true) ||
                             sourceValue.equals("1", ignoreCase = true)
+
                     is Number -> sourceValue.toInt() != 0
                     else -> false
                 }
                 unifiedCameraMap[transformation.targetField] = result
-            }
+            } else throw ApiAccessException(HttpStatus.BAD_REQUEST, "source ${transformation.sourceField} is invalid")
         }
     },
-
     NUMBER_CONVERSION {
         override fun apply(
-            document: Document,
+            source: Document,
             unifiedCameraMap: MutableMap<String, Any?>,
             transformation: FieldTransformation
         ) {
-            val sourceValue = document[transformation.sourceField]
+            val sourceValue = source[transformation.sourceField]
             if (sourceValue != null) {
                 val result = when (sourceValue) {
                     is Number -> sourceValue
@@ -77,36 +86,46 @@ enum class TransformationType {
                     } catch (e: Exception) {
                         null
                     }
+
                     else -> null
                 }
                 if (result != null) {
                     unifiedCameraMap[transformation.targetField] = result
                 }
-            }
+            } else throw ApiAccessException(HttpStatus.BAD_REQUEST, "source ${transformation.sourceField} is invalid")
         }
     },
     STRING_FORMAT {
         override fun apply(
-            document: Document,
+            source: Document,
             unifiedCameraMap: MutableMap<String, Any?>,
             transformation: FieldTransformation
         ) {
-            val sourceValue = document[transformation.sourceField]
+            val sourceValue = source[transformation.sourceField]
             if (sourceValue != null) {
                 val format = transformation.parameters["format"] ?: "%s"
                 unifiedCameraMap[transformation.targetField] = String.format(format, sourceValue)
-            }
+            } else throw ApiAccessException(HttpStatus.BAD_REQUEST, "source ${transformation.sourceField} is invalid")
         }
     },
     DATE_FORMAT {
         override fun apply(
-            document: Document,
+            source: Document,
             unifiedCameraMap: MutableMap<String, Any?>,
             transformation: FieldTransformation
         ) {
-            val sourceValue = document[transformation.sourceField] ?: return
-            val sourceFormat = transformation.parameters["sourceFormat"] ?: return
-            val targetFormat = transformation.parameters["targetFormat"] ?: return
+            val sourceValue = source[transformation.sourceField] ?: throw ApiAccessException(
+                HttpStatus.BAD_REQUEST,
+                "source ${transformation.sourceField} is invalid"
+            )
+            val sourceFormat = transformation.parameters["sourceFormat"] ?: throw ApiAccessException(
+                HttpStatus.BAD_REQUEST,
+                "source date format ${transformation.sourceField} undefined"
+            )
+            val targetFormat = transformation.parameters["targetFormat"] ?: throw ApiAccessException(
+                HttpStatus.BAD_REQUEST,
+                "target date format ${transformation.sourceField} undefined"
+            )
 
             try {
                 val result = when (sourceValue) {
@@ -123,6 +142,7 @@ enum class TransformationType {
                             date.format(targetFormatter)
                         }
                     }
+
                     else -> null
                 }
 
@@ -130,42 +150,14 @@ enum class TransformationType {
                     unifiedCameraMap[transformation.targetField] = result
                 }
             } catch (e: Exception) {
-                log.error("날짜 형식 변환 중 오류: ${e.message}")
-            }
-        }
-    },
-    CUSTOM_SCRIPT {
-        private val scriptEngine = ScriptEngineManager().getEngineByName("nashorn")
-
-        override fun apply(
-            document: Document,
-            unifiedCameraMap: MutableMap<String, Any?>,
-            transformation: FieldTransformation
-        ) {
-            val script = transformation.parameters["script"] ?: return
-
-            // 스크립트 실행을 위한 바인딩 설정
-            val bindings = SimpleBindings()
-            bindings["document"] = document
-            bindings["result"] = null
-
-            try {
-                // 스크립트 실행
-                scriptEngine.eval(script, bindings)
-
-                // 결과 저장
-                val result = bindings["result"]
-                if (result != null) {
-                    unifiedCameraMap[transformation.targetField] = result
-                }
-            } catch (e: Exception) {
-                log.error("스크립트 실행 중 오류: ${e.message}")
+                log.error("exception in datetime transformation: ${e.message}")
+                throw ApiAccessException(HttpStatus.INTERNAL_SERVER_ERROR, e, "exception in datetime transformation")
             }
         }
     };
 
     companion object {
-        val log = LoggerFactory.getLogger(TransformationType::class.java)
+        val log: Logger = LoggerFactory.getLogger(TransformationType::class.java)
     }
 
     /**
@@ -173,7 +165,7 @@ enum class TransformationType {
      * 각 열거형 요소가 이 메소드를 구현해야 함
      */
     abstract fun apply(
-        document: Document,
+        source: Document,
         unifiedCameraMap: MutableMap<String, Any?>,
         transformation: FieldTransformation
     )

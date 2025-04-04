@@ -1,6 +1,9 @@
 package com.oms.vms
 
 import com.fasterxml.jackson.databind.ObjectMapper
+import com.oms.api.exception.ApiAccessException
+import com.oms.logging.gson.gson
+import com.oms.vms.emstone.EmstoneNvr
 import com.oms.vms.mongo.docs.SourceReference
 import com.oms.vms.mongo.docs.UnifiedCamera
 import com.oms.vms.mongo.docs.VmsMappingDocument
@@ -9,11 +12,13 @@ import com.oms.vms.mongo.repo.FieldMappingRepository
 import com.oms.vms.mongo.repo.VmsTypeRegistry
 import kotlinx.coroutines.reactive.awaitFirst
 import kotlinx.coroutines.reactive.awaitFirstOrNull
+import kotlinx.coroutines.reactor.awaitSingle
 import org.bson.Document
 import org.slf4j.LoggerFactory
 import org.springframework.data.mongodb.core.ReactiveMongoTemplate
 import org.springframework.data.mongodb.core.query.Criteria
 import org.springframework.data.mongodb.core.query.Query
+import org.springframework.http.HttpStatus
 import org.springframework.stereotype.Service
 import reactor.core.publisher.Flux
 import java.time.LocalDateTime
@@ -28,7 +33,8 @@ class UnifiedCameraService(
     private val mongoTemplate: ReactiveMongoTemplate,
     private val mappingRepository: FieldMappingRepository,
     private val vmsTypeRegistry: VmsTypeRegistry,
-    private val objectMapper: ObjectMapper
+    private val objectMapper: ObjectMapper,
+    private val vms: EmstoneNvr
 ) {
     private val log = LoggerFactory.getLogger(this::class.java)
     private val unifiedCollection = "vms_camera_unified"
@@ -52,23 +58,20 @@ class UnifiedCameraService(
 
             // VMS 카메라 데이터 가져오기
             val cameraQuery = Query.query(Criteria.where("vms.type").`is`(vmsType))
-            val cameras = mongoTemplate.find(cameraQuery, Document::class.java, "vms_camera")
-                .collectList()
-                .awaitFirst()
+            val cameras =
+                mongoTemplate.find(cameraQuery, Document::class.java, "vms_camera").collectList().awaitSingle()
 
             log.info("$vmsType 유형의 카메라 ${cameras.size}개를 처리합니다.")
 
+            log.info("mapping rules: ${gson.toJson(mappingRules)}")
+
             // 각 카메라 문서를 통합 구조로 변환하고 저장
-            cameras.forEach { document ->
-                try {
-                    val unifiedCamera = mapToUnifiedCamera(document, vmsType, mappingRules)
-                    mongoTemplate.save(unifiedCamera, unifiedCollection).awaitFirst()
-                } catch (e: Exception) {
-                    log.error("카메라 문서 변환 중 오류: ${e.message}", e)
-                }
+            val saved = cameras.map { document ->
+                val unifiedCamera = mapToUnifiedCamera(document, mappingRules)
+                mongoTemplate.save(unifiedCamera, unifiedCollection).awaitFirst()
             }
 
-            log.info("$vmsType 유형의 VMS 데이터 동기화 완료")
+            log.info("$vmsType data sync complete. $saved")
         } catch (e: Exception) {
             log.error("$vmsType 데이터 동기화 중 오류 발생: ${e.message}", e)
             throw e
@@ -76,82 +79,37 @@ class UnifiedCameraService(
     }
 
     /**
-     * 모든 VMS 유형의 카메라 데이터를 동기화
-     */
-    suspend fun synchronizeAllVmsData() {
-        log.info("모든 VMS 유형의 데이터 동기화 시작")
-
-        // 등록된 모든 VMS 유형 가져오기
-        val vmsTypes = vmsTypeRegistry.getAllVmsTypes()
-
-        // 각 VMS 유형에 대해 동기화 수행
-        vmsTypes.forEach { vmsTypeInfo ->
-            try {
-                synchronizeVmsData(vmsTypeInfo.code)
-            } catch (e: Exception) {
-                log.error("${vmsTypeInfo.code} 동기화 중 오류 발생: ${e.message}")
-            }
-        }
-
-        log.info("모든 VMS 유형의 데이터 동기화 완료")
-    }
-
-    /**
      * 문서를 통합 카메라 객체로 매핑
      * 동적 매핑 규칙과 변환을 적용
      */
-    private fun mapToUnifiedCamera(
+    private suspend fun mapToUnifiedCamera(
         document: Document,
-        vmsType: String,
         mappingRules: VmsMappingDocument
     ): UnifiedCamera {
         // 초기 통합 카메라 객체 생성
         val unifiedCamera = UnifiedCamera(
             id = UUID.randomUUID().toString(),
-            vmsType = vmsType,
+            vmsType = mappingRules.vmsType,
             createdAt = LocalDateTime.now(),
             updatedAt = LocalDateTime.now(),
             sourceReference = SourceReference(
                 collectionName = "vms_camera",
                 documentId = document.getString("_id")
-            )
+            ),
+            rtspUrl = vms.getRtspURL()
         )
 
         // 통합 카메라 객체를 가변 맵으로 변환
         val unifiedCameraMap =
             objectMapper.convertValue(unifiedCamera, Map::class.java).mapKeys { it.key as String }.toMutableMap()
 
-        // 기본 필드 매핑 적용
-        mappingRules.mappings.forEach { (sourceName, targetName) ->
-            if (document.containsKey(sourceName) && document[sourceName] != null) {
-                unifiedCameraMap[targetName] = document[sourceName]
-            }
+        // 변환 적용
+        for (t in mappingRules.transformations) {
+            t.transformationType.apply(document, unifiedCameraMap, t)
         }
-
-        // 특수 변환 적용
-        applyTransformations(document, unifiedCameraMap, mappingRules.transformations)
 
         // 맵을 다시 UnifiedCamera 객체로 변환
         return objectMapper.convertValue(unifiedCameraMap, UnifiedCamera::class.java)
-    }
-
-    /**
-     * 변환 규칙 적용
-     * 다양한 변환 유형을 처리
-     */
-    private fun applyTransformations(
-        document: Document,
-        unifiedCameraMap: MutableMap<String, Any?>,
-        transformations: List<FieldTransformation>
-    ) {
-        transformations.forEach { transformation ->
-            try {
-                // 변환 유형에 로직 위임
-                transformation.transformationType.apply(document, unifiedCameraMap, transformation)
-            } catch (e: Exception) {
-                log.error("변환 적용 중 오류: ${transformation.transformationType} - ${e.message}")
-            }
-        }
     }
 
     /**
@@ -206,42 +164,6 @@ class UnifiedCameraService(
         mappingRepository.getMappingRules(vmsTypeInfo.code)
 
         return registeredType
-    }
-
-    /**
-     * 동적 매핑 규칙 업데이트
-     */
-    suspend fun updateMappingRule(vmsType: String, sourceField: String, targetField: String): VmsMappingDocument {
-        val mappingRules = mappingRepository.getMappingRules(vmsType)
-
-        // 매핑 업데이트
-        val updatedMappings = mappingRules.mappings.toMutableMap()
-        updatedMappings[sourceField] = targetField
-
-        val updatedRules = mappingRules.copy(
-            mappings = updatedMappings,
-            updatedAt = LocalDateTime.now()
-        )
-
-        return mappingRepository.updateMappingRules(updatedRules)
-    }
-
-    /**
-     * 매핑 규칙에서 필드 매핑 제거
-     */
-    suspend fun removeMappingRule(vmsType: String, sourceField: String): VmsMappingDocument {
-        val mappingRules = mappingRepository.getMappingRules(vmsType)
-
-        // 매핑 제거
-        val updatedMappings = mappingRules.mappings.toMutableMap()
-        updatedMappings.remove(sourceField)
-
-        val updatedRules = mappingRules.copy(
-            mappings = updatedMappings,
-            updatedAt = LocalDateTime.now()
-        )
-
-        return mappingRepository.updateMappingRules(updatedRules)
     }
 
     /**

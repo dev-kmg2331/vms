@@ -55,7 +55,7 @@ class VmsWebClientConfig(
             .post()
             .uri("/login")
             .retrieve()
-            .bodyToMono<String>(String::class.java)
+            .bodyToMono(String::class.java)
             .onErrorResume(WebClientRequestException::class.java) { e: WebClientRequestException ->
                 log.error("relay server connection failed! {}", e.localizedMessage)
                 Mono.just<String>("{\"key\":\"\"}")

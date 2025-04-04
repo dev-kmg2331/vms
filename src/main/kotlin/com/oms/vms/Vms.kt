@@ -2,7 +2,6 @@ package com.oms.vms
 
 import org.springframework.stereotype.Component
 
-@Component
 interface Vms {
     suspend fun download()
 

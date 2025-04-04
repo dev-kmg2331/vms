@@ -28,8 +28,6 @@ abstract class DefaultVms protected constructor(
         }
     }
 
-    override suspend fun getRtspURL(): String = ""
-
     private fun initThreadPool() {
         executor.queueCapacity = 128
         executor.setWaitForTasksToCompleteOnShutdown(false)

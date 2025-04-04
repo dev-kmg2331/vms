@@ -42,8 +42,11 @@ class NaizVms(
 
         } catch (e: Exception) {
             log.error("$e", e)
+            throw e
         }
     }
+
+    override suspend fun getRtspURL(): String = ""
 
     fun extractActualData(it: String): List<JsonObject> {
         val json = gson.fromJson(it, TypeToken.get(JsonObject::class.java))

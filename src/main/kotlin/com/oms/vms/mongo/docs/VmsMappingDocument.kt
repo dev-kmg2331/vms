@@ -17,7 +17,6 @@ data class VmsMappingDocument(
     @Id
     val id: String = UUID.randomUUID().toString(),
     val vmsType: String,                       // VMS 유형 (dahua, emstone, naiz 등)
-    val mappings: Map<String, String> = mapOf(),  // 원본 필드 -> 통합 필드 매핑
     val transformations: List<FieldTransformation> = listOf(), // 특수 변환 룰
     val description: String? = null,           // 매핑 설명
     val createdAt: LocalDateTime = LocalDateTime.now(),
