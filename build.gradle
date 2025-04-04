@@ -1,0 +1,73 @@
+plugins {
+    id 'org.jetbrains.kotlin.jvm' version '1.9.25'
+    id 'org.jetbrains.kotlin.plugin.spring' version '1.9.25'
+    id 'org.springframework.boot' version '3.4.2'
+    id 'io.spring.dependency-management' version '1.1.7'
+}
+
+group = 'com.oms'
+version = '0.0.1-SNAPSHOT'
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(17)
+    }
+}
+
+repositories {
+    mavenCentral()
+
+    maven {
+        name = 'oms-nexus'
+        url = uri('https://ompass.kr:5443/repository/omeye-common/')
+        credentials {
+            username = findProperty("oms-nexus.username") ?: "admin"
+            password = findProperty("oms-nexus.password") ?: "oms20190211"
+        }
+    }
+}
+
+dependencies {
+    // oms-be common
+    implementation ('com.oms:oms-be-common:1.0.0') {
+        changing = true
+    }
+
+    implementation 'org.springframework.boot:spring-boot-starter-validation'
+
+    // kotlin
+    implementation 'io.projectreactor.kotlin:reactor-kotlin-extensions'
+    implementation 'org.jetbrains.kotlin:kotlin-reflect'
+    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-reactor'
+
+    // spring web
+    implementation 'org.springframework.boot:spring-boot-starter-webflux'
+    implementation 'org.springframework.boot:spring-boot-starter-aop'
+
+    // MongoDB
+    implementation 'org.springframework.boot:spring-boot-starter-data-mongodb-reactive'
+
+    // Postgresql
+    runtimeOnly 'org.postgresql:postgresql'
+
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation 'io.projectreactor:reactor-test'
+    testImplementation 'org.jetbrains.kotlin:kotlin-test-junit5'
+    testImplementation 'org.jetbrains.kotlinx:kotlinx-coroutines-test'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+
+    // MockK
+    testImplementation 'io.mockk:mockk:1.13.9'
+
+    testImplementation 'io.projectreactor:reactor-test'
+}
+
+kotlin {
+    compilerOptions {
+        freeCompilerArgs.addAll '-Xjsr305=strict'
+    }
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+}

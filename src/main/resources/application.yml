@@ -1,0 +1,21 @@
+spring:
+  data:
+    mongodb:
+      uri: mongodb://${spring.data.mongodb.username}:${spring.data.mongodb.password}@localhost:27017/${spring.data.mongodb.database}?authSource=admin&authMechanism=SCRAM-SHA-1
+      auto-index-creation: true
+      username: oms
+      password: oms20190211!
+      database: vms
+
+---
+spring:
+  config:
+    activate:
+      on-profile: test
+  data:
+    mongodb:
+      uri: mongodb://${spring.data.mongodb.username}:${spring.data.mongodb.password}@localhost:27017/${spring.data.mongodb.database}?authSource=admin&authMechanism=SCRAM-SHA-1
+      auto-index-creation: true
+      username: oms
+      password: oms20190211!
+      database: test
