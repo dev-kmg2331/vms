@@ -1,5 +1,6 @@
 package com.oms.vms
 
+import com.oms.vms.sync.VmsSynchronizeService
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatusCode
@@ -12,6 +13,7 @@ import reactor.util.retry.Retry.RetrySignal
 import java.time.Duration
 
 abstract class DefaultVms protected constructor(
+    protected val vmsSynchronizeService: VmsSynchronizeService,
     protected final val executor: ThreadPoolTaskExecutor = ThreadPoolTaskExecutor(),
     poolSize: Int = 16
 ) : Vms {

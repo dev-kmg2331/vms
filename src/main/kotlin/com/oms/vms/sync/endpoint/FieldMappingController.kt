@@ -1,10 +1,10 @@
 package com.oms.vms.sync.endpoint
 
 import com.oms.api.response.ResponseUtil
+import com.oms.vms.VmsType
 import com.oms.vms.sync.FieldMappingService
 import com.oms.vms.sync.TransformationType
-import com.oms.vms.mongo.docs.VmsTypeInfo
-import com.oms.vms.mongo.repo.VmsTypeRegistry
+import com.oms.vms.sync.VmsSynchronizeService
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
@@ -15,10 +15,10 @@ import org.springframework.web.bind.annotation.*
  * 필드 매핑 규칙 관리를 위한 RESTful 엔드포인트 제공
  */
 @RestController
-@RequestMapping("/api/vms/mappings")
+@RequestMapping("/api/v2/vms/mappings")
 class FieldMappingController(
     private val fieldMappingService: FieldMappingService,
-    private val vmsTypeRegistry: VmsTypeRegistry
+    private val vmsSynchronizeService: VmsSynchronizeService
 ) {
     private val log = LoggerFactory.getLogger(FieldMappingController::class.java)
 
@@ -47,6 +47,20 @@ class FieldMappingController(
         } catch (e: Exception) {
             log.error("error in finding all VMS type mapping rules: ${e.message}", e)
             ResponseUtil.fail(HttpStatus.INTERNAL_SERVER_ERROR, "error in finding all VMS type mapping rules")
+        }
+    }
+
+    /**
+     * 특정 VMS 유형의 키값 조회
+     */
+    @GetMapping("/{vmsType}/keys")
+    suspend fun getVmsTypeKeys(@PathVariable vmsType: String): ResponseEntity<*> {
+        return try {
+            val jsonKeys = vmsSynchronizeService.getVmsDataJsonKeys(vmsType)
+            return ResponseUtil.success(jsonKeys)
+        } catch (e: Exception) {
+            log.error("error fetching keys for VMS type {}: {}", vmsType, e.message, e)
+            ResponseUtil.fail(HttpStatus.INTERNAL_SERVER_ERROR, "error fetching keys for VMS type: $vmsType")
         }
     }
 
@@ -136,26 +150,12 @@ class FieldMappingController(
     }
 
     /**
-     * VMS 유형 등록
-     */
-    @PostMapping("/vms-type")
-    suspend fun registerVmsType(@RequestBody vmsTypeInfo: VmsTypeInfo): ResponseEntity<*> {
-        return try {
-            val registeredType = vmsTypeRegistry.registerVmsType(vmsTypeInfo)
-            ResponseUtil.success(registeredType)
-        } catch (e: Exception) {
-            log.error("error in registering VMS type", e)
-            ResponseUtil.fail(HttpStatus.INTERNAL_SERVER_ERROR, "error in registering VMS type")
-        }
-    }
-
-    /**
      * 모든 VMS 유형 조회
      */
     @GetMapping("/vms-types")
     suspend fun getAllVmsTypes(): ResponseEntity<*> {
         return try {
-            val vmsTypes = vmsTypeRegistry.getAllVmsTypes()
+            val vmsTypes = VmsType.entries.map { it.serviceName }
             ResponseUtil.success(vmsTypes)
         } catch (e: Exception) {
             log.error("error in finding all VMS types: ${e.message}", e)

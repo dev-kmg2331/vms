@@ -2,16 +2,29 @@ package com.oms.vms.sync
 
 import com.google.gson.JsonElement
 import com.google.gson.JsonObject
+import com.oms.api.exception.ApiAccessException
+import com.oms.vms.VmsType
 import com.oms.vms.persistence.mongo.repository.ReactiveMongoRepo
 import format
+import kotlinx.coroutines.reactive.awaitFirstOrNull
 import org.bson.Document
+import org.slf4j.LoggerFactory
+import org.springframework.data.mongodb.core.ReactiveMongoTemplate
+import org.springframework.data.mongodb.core.query.Criteria
+import org.springframework.data.mongodb.core.query.Query
+import org.springframework.http.HttpStatus
+import org.springframework.stereotype.Service
 import java.time.LocalDateTime
 import java.util.*
 
 /**
- * VMS 유틸리티 클래스 - VMS 구현 간의 공통 기능을 제공합니다.
+ * VMS 동기화 서비스 - VMS 구현 간의 공통 기능을 제공합니다.
  */
-object VmsSynchronizeUtil {
+@Service
+class VmsSynchronizeService(
+    private val mongoTemplate: ReactiveMongoTemplate
+) {
+    private val log = LoggerFactory.getLogger(VmsSynchronizeService::class.java)
 
     /**
      * 원시 VMS 응답 데이터에 대한 기본 문서를 생성합니다.
@@ -127,11 +140,33 @@ object VmsSynchronizeUtil {
                 // 키 목록 저장
                 val keysDoc = createKeysDocument(keys, vmsType)
                 mongoRepo.insert(keysDoc, keysCollection)
-            } else {
-                // 카메라 JSON 저장
-                val cameraDoc = createCameraDocument(json, vmsType)
-                mongoRepo.insert(cameraDoc, cameraCollection)
             }
+
+            // 카메라 JSON 저장
+            val cameraDoc = createCameraDocument(json, vmsType)
+            mongoRepo.insert(cameraDoc, cameraCollection)
         }
+    }
+
+    /**
+     * 특정 VMS 유형의 키값 구조 조회
+     * vms_camera_keys 컬렉션에서 키 구조 정보를 가져옴
+     */
+    suspend fun getVmsDataJsonKeys(vmsType: String): Document {
+        log.info("fetching keys for VMS type: {}", vmsType)
+
+        val vms: VmsType
+
+        try {
+            vms = VmsType.findByServiceName(vmsType)
+        } catch (e: Exception) {
+            throw ApiAccessException(HttpStatus.BAD_REQUEST, e)
+        }
+
+        return mongoTemplate.findOne(
+            Query.query(Criteria.where("vms_type").`is`(vms.serviceName)),
+            Document::class.java,
+            "vms_camera_keys"
+        ).awaitFirstOrNull() ?: throw ApiAccessException(HttpStatus.BAD_REQUEST, "no keys found for VMS type: {}")
     }
 }

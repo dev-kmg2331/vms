@@ -6,9 +6,7 @@ import com.oms.vms.emstone.EmstoneNvr
 import com.oms.vms.mongo.docs.SourceReference
 import com.oms.vms.mongo.docs.UnifiedCamera
 import com.oms.vms.mongo.docs.VmsMappingDocument
-import com.oms.vms.mongo.docs.VmsTypeInfo
 import com.oms.vms.mongo.repo.FieldMappingRepository
-import com.oms.vms.mongo.repo.VmsTypeRegistry
 import format
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.reactive.asFlow
@@ -32,7 +30,6 @@ import java.util.*
 class UnifiedCameraService(
     private val mongoTemplate: ReactiveMongoTemplate,
     private val mappingRepository: FieldMappingRepository,
-    private val vmsTypeRegistry: VmsTypeRegistry,
     private val objectMapper: ObjectMapper,
     private val vms: EmstoneNvr
 ) {
@@ -149,19 +146,6 @@ class UnifiedCameraService(
         )
 
         return mappingRepository.updateMappingRules(updatedRules)
-    }
-
-    /**
-     * 새로운 VMS 유형 등록 및 기본 매핑 생성
-     */
-    suspend fun registerNewVmsType(vmsTypeInfo: VmsTypeInfo): VmsTypeInfo {
-        // VMS 유형 등록
-        val registeredType = vmsTypeRegistry.registerVmsType(vmsTypeInfo)
-
-        // 기본 매핑 생성
-        mappingRepository.getMappingRules(vmsTypeInfo.code)
-
-        return registeredType
     }
 
     /**

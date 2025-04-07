@@ -1,5 +1,6 @@
 package com.oms.vms
 
+import com.oms.vms.sync.VmsSynchronizeService
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.InitializingBean
 import org.springframework.core.env.Environment
@@ -16,10 +17,11 @@ import java.util.function.Consumer
 abstract class SessionRequiredVms(
 //    vmsConfig: VmsConfig,
     protected val environment: Environment,
+    vmsSynchronizeService: VmsSynchronizeService,
     httpMethod: HttpMethod = HttpMethod.GET,
 //    siteRepo: SiteRepo,
 //    cameraRepo: CameraRepo
-) : DefaultVms(/*siteRepo, cameraRepo*/), Vms, LoginRequired, SessionRequired, InitializingBean {
+) : DefaultVms(vmsSynchronizeService), Vms, LoginRequired, SessionRequired, InitializingBean {
 
     protected val sessionClient: WebClient = WebClient.builder().baseUrl("http://localhost").build()
     private var httpMethod: HttpMethod = httpMethod

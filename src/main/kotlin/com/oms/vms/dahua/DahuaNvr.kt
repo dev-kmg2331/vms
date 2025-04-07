@@ -4,10 +4,10 @@ import com.google.gson.JsonObject
 import com.oms.logging.gson.gson
 import com.oms.vms.DefaultVms
 import com.oms.vms.VmsType
-import com.oms.vms.sync.VmsSynchronizeUtil
-import com.oms.vms.config.DigestAuthenticatorClient
+import com.oms.vms.app.config.DigestAuthenticatorClient
 import com.oms.vms.config.VmsConfig
 import com.oms.vms.persistence.mongo.repository.ReactiveMongoRepo
+import com.oms.vms.sync.VmsSynchronizeService
 import kotlinx.coroutines.reactor.awaitSingle
 import org.springframework.stereotype.Component
 import org.springframework.web.reactive.function.client.WebClient
@@ -17,10 +17,19 @@ import java.util.regex.Pattern
 class DahuaNvr(
     private val webClient: WebClient,
     private val vmsConfig: VmsConfig,
-    private val reactiveMongoRepo: ReactiveMongoRepo
-) : DefaultVms() {
+    private val reactiveMongoRepo: ReactiveMongoRepo,
+    vmsSynchronizeService: VmsSynchronizeService
+) : DefaultVms(vmsSynchronizeService) {
     private val client: DigestAuthenticatorClient = DigestAuthenticatorClient(webClient, vmsConfig.id, vmsConfig.password)
+
     override val type = VmsType.DAHUA.serviceName
+
+    private val processJsonData: (String) -> List<JsonObject> = { responseText ->
+        val cameraList = parseCameraList(responseText)
+        cameraList.map { camera ->
+            gson.toJsonTree(camera).asJsonObject
+        }
+    }
 
     override suspend fun download() {
         TODO("Not yet implemented")
@@ -30,8 +39,8 @@ class DahuaNvr(
         val uri = "/cgi-bin/configManager.cgi?action=getConfig&name=RemoteDevice"
         val response = client.makeRequest(uri).awaitSingle()
 
-        // 공통 유틸리티를 사용하여 데이터 동기화
-        VmsSynchronizeUtil.synchronize(
+        // 데이터 동기화
+        vmsSynchronizeService.synchronize(
             rawResponse = response,
             uri = uri,
             vmsType = type,
@@ -41,13 +50,6 @@ class DahuaNvr(
     }
 
     override suspend fun getRtspURL(id: String): String = ""
-
-    private val processJsonData: (String) -> List<JsonObject> = { responseText ->
-        val cameraList = parseCameraList(responseText)
-        cameraList.map { camera ->
-            gson.toJsonTree(camera).asJsonObject
-        }
-    }
 
     private fun parseCameraList(content: String): List<DahuaCameraSync> {
         val cameras = mutableMapOf<String, DahuaCameraSync>()

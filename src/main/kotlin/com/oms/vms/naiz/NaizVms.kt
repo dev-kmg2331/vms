@@ -4,9 +4,9 @@ import com.google.gson.JsonObject
 import com.google.gson.reflect.TypeToken
 import com.oms.logging.gson.gson
 import com.oms.vms.DefaultVms
-import com.oms.vms.sync.VmsSynchronizeUtil
 import com.oms.vms.config.VmsConfig
 import com.oms.vms.persistence.mongo.repository.ReactiveMongoRepo
+import com.oms.vms.sync.VmsSynchronizeService
 import kotlinx.coroutines.reactor.awaitSingle
 import org.json.XML
 import org.springframework.beans.factory.annotation.Qualifier
@@ -18,8 +18,9 @@ class NaizVms(
     @Qualifier("naiz")
     private val webClient: WebClient,
     private val vmsConfig: VmsConfig,
-    private val mongoRepo: ReactiveMongoRepo
-) : DefaultVms() {
+    private val mongoRepo: ReactiveMongoRepo,
+    vmsSynchronizeService: VmsSynchronizeService
+) : DefaultVms(vmsSynchronizeService) {
     override val type: String = "naiz"
 
     override suspend fun download() {
@@ -33,7 +34,8 @@ class NaizVms(
                 uri = "$uri?id=${vmsConfig.id}&password=${vmsConfig.password}&key=all&method=get"
             ).awaitSingle()
             val response = XML.toJSONObject(rawXML).toMap()
-            VmsSynchronizeUtil.synchronize(
+
+            vmsSynchronizeService.synchronize(
                 rawResponse = gson.toJson(response),
                 uri = uri,
                 vmsType = "naiz",

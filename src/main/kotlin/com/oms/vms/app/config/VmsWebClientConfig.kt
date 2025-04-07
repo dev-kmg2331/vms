@@ -1,6 +1,7 @@
-package com.oms.vms.config
+package com.oms.vms.app.config
 
 import com.oms.ExcludeInTestProfile
+import com.oms.vms.config.VmsConfig
 import io.netty.handler.ssl.SslContextBuilder
 import io.netty.handler.ssl.util.InsecureTrustManagerFactory
 import org.json.JSONObject
