@@ -37,7 +37,7 @@ class EmstoneNvr(
         )
     }
 
-    override suspend fun getRtspURL(): String {
+    override suspend fun getRtspURL(id: String): String {
         val rtspUrl = "rtsp://${vmsConfig.id}:${vmsConfig.password}@${vmsConfig.ip}/video{}"
         return rtspUrl
     }

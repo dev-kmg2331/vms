@@ -7,7 +7,7 @@ interface Vms {
 
     suspend fun synchronize()
 
-    suspend fun getRtspURL(): String
+    suspend fun getRtspURL(id: String): String
 
     fun initialize()
 

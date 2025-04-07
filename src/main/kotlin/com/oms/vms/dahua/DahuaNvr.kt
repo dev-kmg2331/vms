@@ -40,7 +40,7 @@ class DahuaNvr(
         )
     }
 
-    override suspend fun getRtspURL(): String = ""
+    override suspend fun getRtspURL(id: String): String = ""
 
     private val processJsonData: (String) -> List<JsonObject> = { responseText ->
         val cameraList = parseCameraList(responseText)

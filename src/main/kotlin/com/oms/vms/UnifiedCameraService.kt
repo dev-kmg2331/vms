@@ -1,7 +1,6 @@
 package com.oms.vms
 
 import com.fasterxml.jackson.databind.ObjectMapper
-import com.oms.api.exception.ApiAccessException
 import com.oms.logging.gson.gson
 import com.oms.vms.emstone.EmstoneNvr
 import com.oms.vms.mongo.docs.SourceReference
@@ -10,6 +9,7 @@ import com.oms.vms.mongo.docs.VmsMappingDocument
 import com.oms.vms.mongo.docs.VmsTypeInfo
 import com.oms.vms.mongo.repo.FieldMappingRepository
 import com.oms.vms.mongo.repo.VmsTypeRegistry
+import format
 import kotlinx.coroutines.reactive.awaitFirst
 import kotlinx.coroutines.reactive.awaitFirstOrNull
 import kotlinx.coroutines.reactor.awaitSingle
@@ -18,7 +18,6 @@ import org.slf4j.LoggerFactory
 import org.springframework.data.mongodb.core.ReactiveMongoTemplate
 import org.springframework.data.mongodb.core.query.Criteria
 import org.springframework.data.mongodb.core.query.Query
-import org.springframework.http.HttpStatus
 import org.springframework.stereotype.Service
 import reactor.core.publisher.Flux
 import java.time.LocalDateTime
@@ -66,8 +65,8 @@ class UnifiedCameraService(
             log.info("mapping rules: ${gson.toJson(mappingRules)}")
 
             // 각 카메라 문서를 통합 구조로 변환하고 저장
-            val saved = cameras.map { document ->
-                val unifiedCamera = mapToUnifiedCamera(document, mappingRules)
+            val saved = cameras.map { vmsCamera ->
+                val unifiedCamera = mapToUnifiedCamera(vmsCamera, mappingRules)
                 mongoTemplate.save(unifiedCamera, unifiedCollection).awaitFirst()
             }
 
@@ -83,20 +82,18 @@ class UnifiedCameraService(
      * 동적 매핑 규칙과 변환을 적용
      */
     private suspend fun mapToUnifiedCamera(
-        document: Document,
+        vmsCamera: Document,
         mappingRules: VmsMappingDocument
     ): UnifiedCamera {
         // 초기 통합 카메라 객체 생성
         val unifiedCamera = UnifiedCamera(
             id = UUID.randomUUID().toString(),
             vmsType = mappingRules.vmsType,
-            createdAt = LocalDateTime.now(),
-            updatedAt = LocalDateTime.now(),
             sourceReference = SourceReference(
                 collectionName = "vms_camera",
-                documentId = document.getString("_id")
+                documentId = vmsCamera.getString("_id")
             ),
-            rtspUrl = vms.getRtspURL()
+            rtspUrl = vms.getRtspURL(vmsCamera.getString("_id"))
         )
 
         // 통합 카메라 객체를 가변 맵으로 변환
@@ -105,7 +102,7 @@ class UnifiedCameraService(
 
         // 변환 적용
         for (t in mappingRules.transformations) {
-            t.transformationType.apply(document, unifiedCameraMap, t)
+            t.transformationType.apply(vmsCamera, unifiedCameraMap, t)
         }
 
         // 맵을 다시 UnifiedCamera 객체로 변환
@@ -147,7 +144,7 @@ class UnifiedCameraService(
         // 업데이트된 매핑 규칙 저장
         val updatedRules = mappingRules.copy(
             transformations = updatedTransformations,
-            updatedAt = LocalDateTime.now()
+            updatedAt = LocalDateTime.now().format()
         )
 
         return mappingRepository.updateMappingRules(updatedRules)

@@ -1,13 +1,12 @@
 package com.oms.vms.mongo.repo
 
-import com.oms.api.exception.ApiAccessException
 import com.oms.vms.mongo.docs.VmsMappingDocument
+import format
 import kotlinx.coroutines.reactive.awaitFirst
 import kotlinx.coroutines.reactive.awaitFirstOrNull
 import org.springframework.data.mongodb.core.ReactiveMongoTemplate
 import org.springframework.data.mongodb.core.query.Criteria
 import org.springframework.data.mongodb.core.query.Query
-import org.springframework.http.HttpStatus
 import org.springframework.stereotype.Component
 import java.time.LocalDateTime
 
@@ -54,7 +53,7 @@ class FieldMappingRepository(
      */
     suspend fun updateMappingRules(mapping: VmsMappingDocument): VmsMappingDocument {
         // 업데이트 시간 설정
-        val updatedMapping = mapping.copy(updatedAt = LocalDateTime.now())
+        val updatedMapping = mapping.copy(updatedAt = LocalDateTime.now().format())
         
         return mongoTemplate.save(updatedMapping, mappingCollection).awaitFirst()
     }

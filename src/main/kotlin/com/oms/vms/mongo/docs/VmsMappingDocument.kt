@@ -2,6 +2,7 @@ package com.oms.vms.mongo.docs
 
 import com.fasterxml.jackson.annotation.JsonInclude
 import com.oms.vms.FieldTransformation
+import format
 import org.springframework.data.annotation.Id
 import org.springframework.data.mongodb.core.mapping.Document
 import java.time.LocalDateTime
@@ -19,6 +20,6 @@ data class VmsMappingDocument(
     val vmsType: String,                       // VMS 유형 (dahua, emstone, naiz 등)
     val transformations: List<FieldTransformation> = listOf(), // 특수 변환 룰
     val description: String? = null,           // 매핑 설명
-    val createdAt: LocalDateTime = LocalDateTime.now(),
-    val updatedAt: LocalDateTime = LocalDateTime.now()
+    val createdAt: String = LocalDateTime.now().format(),
+    val updatedAt: String = LocalDateTime.now().format()
 )

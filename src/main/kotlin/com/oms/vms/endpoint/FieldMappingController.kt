@@ -53,41 +53,6 @@ class FieldMappingController(
     }
 
     /**
-     * 필드 매핑 규칙 추가 또는 업데이트
-     */
-    @PostMapping("/{vmsType}/field")
-    suspend fun addOrUpdateFieldMapping(
-        @PathVariable vmsType: String,
-        @RequestParam sourceField: String,
-        @RequestParam targetField: String
-    ): ResponseEntity<VmsMappingDocument> {
-        return try {
-            val updatedRule = fieldMappingService.addOrUpdateFieldMapping(vmsType, sourceField, targetField)
-            ResponseEntity.ok(updatedRule)
-        } catch (e: Exception) {
-            log.error("$vmsType 유형의 필드 매핑 추가 중 오류 발생: ${e.message}", e)
-            ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build()
-        }
-    }
-
-    /**
-     * 필드 매핑 규칙 삭제
-     */
-    @DeleteMapping("/{vmsType}/field")
-    suspend fun removeFieldMapping(
-        @PathVariable vmsType: String,
-        @RequestParam sourceField: String
-    ): ResponseEntity<VmsMappingDocument> {
-        return try {
-            val updatedRule = fieldMappingService.removeFieldMapping(vmsType, sourceField)
-            ResponseEntity.ok(updatedRule)
-        } catch (e: Exception) {
-            log.error("$vmsType 유형의 필드 매핑 제거 중 오류 발생: ${e.message}", e)
-            ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build()
-        }
-    }
-
-    /**
      * 필드 변환 규칙 추가
      */
     @PostMapping("/{vmsType}/transformation")
@@ -177,23 +142,6 @@ class FieldMappingController(
     }
 
     /**
-     * 매핑 규칙 복제
-     */
-    @PostMapping("/{sourceVmsType}/clone/{targetVmsType}")
-    suspend fun cloneMappingRules(
-        @PathVariable sourceVmsType: String,
-        @PathVariable targetVmsType: String
-    ): ResponseEntity<VmsMappingDocument> {
-        return try {
-            val clonedRule = fieldMappingService.cloneMappingRules(sourceVmsType, targetVmsType)
-            ResponseEntity.ok(clonedRule)
-        } catch (e: Exception) {
-            log.error("$sourceVmsType 유형의 매핑 규칙을 $targetVmsType 유형으로 복제 중 오류 발생: ${e.message}", e)
-            ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build()
-        }
-    }
-
-    /**
      * 매핑 규칙 초기화
      */
     @PostMapping("/{vmsType}/reset")
@@ -203,20 +151,6 @@ class FieldMappingController(
             ResponseEntity.ok(resetRule)
         } catch (e: Exception) {
             log.error("$vmsType 유형의 매핑 규칙 초기화 중 오류 발생: ${e.message}", e)
-            ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build()
-        }
-    }
-
-    /**
-     * 매핑 규칙 검증
-     */
-    @GetMapping("/{vmsType}/validate")
-    suspend fun validateMappingRules(@PathVariable vmsType: String): ResponseEntity<Map<String, List<String>>> {
-        return try {
-            val validationResults = fieldMappingService.validateMappingRules(vmsType)
-            ResponseEntity.ok(validationResults)
-        } catch (e: Exception) {
-            log.error("$vmsType 유형의 매핑 규칙 검증 중 오류 발생: ${e.message}", e)
             ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build()
         }
     }

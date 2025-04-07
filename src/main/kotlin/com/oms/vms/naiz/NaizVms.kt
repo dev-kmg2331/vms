@@ -46,7 +46,7 @@ class NaizVms(
         }
     }
 
-    override suspend fun getRtspURL(): String = ""
+    override suspend fun getRtspURL(id: String): String = ""
 
     fun extractActualData(it: String): List<JsonObject> {
         val json = gson.fromJson(it, TypeToken.get(JsonObject::class.java))

@@ -1,6 +1,5 @@
 package com.oms.vms.endpoint
 
-import com.oms.vms.Vms
 import com.oms.vms.dahua.DahuaNvr
 import com.oms.vms.emstone.EmstoneNvr
 import com.oms.vms.naiz.NaizVms
@@ -25,6 +24,7 @@ class VmsSynchronizeController(
     private val log = LoggerFactory.getLogger(VmsSynchronizeController::class.java)
 
     // VMS 구현체 맵
+    // TODO : 제거
     private val vmsMap = mapOf(
         "dahua" to dahuaNvr,
         "emstone" to emstoneNvr,
@@ -37,26 +37,32 @@ class VmsSynchronizeController(
     @PostMapping("/{vmsType}")
     suspend fun synchronizeVms(@PathVariable vmsType: String): ResponseEntity<Map<String, String>> {
         val vms = vmsMap[vmsType]
-        
+
         return if (vms != null) {
             try {
                 vms.synchronize()
-                ResponseEntity.ok(mapOf(
-                    "status" to "success",
-                    "message" to "$vmsType VMS 데이터 동기화가 완료되었습니다."
-                ))
+                ResponseEntity.ok(
+                    mapOf(
+                        "status" to "success",
+                        "message" to "$vmsType VMS 데이터 동기화가 완료되었습니다."
+                    )
+                )
             } catch (e: Exception) {
                 log.error("$vmsType VMS 동기화 중 오류 발생: ${e.message}", e)
-                ResponseEntity.ok(mapOf(
-                    "status" to "error",
-                    "message" to "$vmsType VMS 동기화 중 오류 발생: ${e.message}"
-                ))
+                ResponseEntity.ok(
+                    mapOf(
+                        "status" to "error",
+                        "message" to "$vmsType VMS 동기화 중 오류 발생: ${e.message}"
+                    )
+                )
             }
         } else {
-            ResponseEntity.ok(mapOf(
-                "status" to "error",
-                "message" to "지원하지 않는 VMS 유형: $vmsType"
-            ))
+            ResponseEntity.ok(
+                mapOf(
+                    "status" to "error",
+                    "message" to "지원하지 않는 VMS 유형: $vmsType"
+                )
+            )
         }
     }
 
@@ -66,7 +72,7 @@ class VmsSynchronizeController(
     @PostMapping
     suspend fun synchronizeAllVms(): ResponseEntity<Map<String, Any>> {
         val results = mutableMapOf<String, String>()
-        
+
         try {
             coroutineScope {
                 // 모든 VMS 동기화를 병렬로 실행
@@ -81,25 +87,29 @@ class VmsSynchronizeController(
                         }
                     }
                 }
-                
+
                 // 모든 비동기 작업 완료 대기
                 val syncResults = deferreds.awaitAll()
                 syncResults.forEach { (type, result) ->
                     results[type] = result
                 }
             }
-            
-            return ResponseEntity.ok(mapOf(
-                "status" to "completed",
-                "results" to results
-            ))
+
+            return ResponseEntity.ok(
+                mapOf(
+                    "status" to "completed",
+                    "results" to results
+                )
+            )
         } catch (e: Exception) {
             log.error("VMS 일괄 동기화 중 오류 발생: ${e.message}", e)
-            return ResponseEntity.ok(mapOf(
-                "status" to "error",
-                "message" to "VMS 일괄 동기화 중 오류 발생: ${e.message}",
-                "results" to results
-            ))
+            return ResponseEntity.ok(
+                mapOf(
+                    "status" to "error",
+                    "message" to "VMS 일괄 동기화 중 오류 발생: ${e.message}",
+                    "results" to results
+                )
+            )
         }
     }
 
@@ -108,37 +118,48 @@ class VmsSynchronizeController(
      */
     @GetMapping("/types")
     fun getSupportedVmsTypes(): ResponseEntity<Map<String, List<String>>> {
-        return ResponseEntity.ok(mapOf(
-            "supportedTypes" to vmsMap.keys.toList()
-        ))
+        return ResponseEntity.ok(
+            mapOf(
+                "supportedTypes" to vmsMap.keys.toList()
+            )
+        )
     }
 
     /**
      * VMS RTSP URL 조회
      */
-    @GetMapping("/rtsp/{vmsType}")
-    suspend fun getRtspUrl(@PathVariable vmsType: String): ResponseEntity<Map<String, String>> {
+    @GetMapping("/rtsp/{vmsType}/{id}")
+    suspend fun getRtspUrl(
+        @PathVariable vmsType: String,
+        @PathVariable id: String
+    ): ResponseEntity<Map<String, String>> {
         val vms = vmsMap[vmsType]
-        
+
         return if (vms != null) {
             try {
-                val rtspUrl = vms.getRtspURL()
-                ResponseEntity.ok(mapOf(
-                    "status" to "success",
-                    "rtspUrl" to rtspUrl
-                ))
+                val rtspUrl = vms.getRtspURL(id)
+                ResponseEntity.ok(
+                    mapOf(
+                        "status" to "success",
+                        "rtspUrl" to rtspUrl
+                    )
+                )
             } catch (e: Exception) {
                 log.error("$vmsType VMS RTSP URL 조회 중 오류 발생: ${e.message}", e)
-                ResponseEntity.ok(mapOf(
-                    "status" to "error",
-                    "message" to "$vmsType VMS RTSP URL 조회 중 오류 발생: ${e.message}"
-                ))
+                ResponseEntity.ok(
+                    mapOf(
+                        "status" to "error",
+                        "message" to "$vmsType VMS RTSP URL 조회 중 오류 발생: ${e.message}"
+                    )
+                )
             }
         } else {
-            ResponseEntity.ok(mapOf(
-                "status" to "error",
-                "message" to "지원하지 않는 VMS 유형: $vmsType"
-            ))
+            ResponseEntity.ok(
+                mapOf(
+                    "status" to "error",
+                    "message" to "지원하지 않는 VMS 유형: $vmsType"
+                )
+            )
         }
     }
 }
