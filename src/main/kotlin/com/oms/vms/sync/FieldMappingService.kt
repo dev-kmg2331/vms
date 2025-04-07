@@ -1,5 +1,6 @@
-package com.oms.vms
+package com.oms.vms.sync
 
+import com.oms.vms.sync.endpoint.TransformationRequest
 import com.oms.vms.mongo.docs.VmsMappingDocument
 import com.oms.vms.mongo.repo.FieldMappingRepository
 import format
@@ -21,7 +22,7 @@ class FieldMappingService(
      * 특정 VMS 유형의 매핑 규칙 조회
      */
     suspend fun getMappingRules(vmsType: String): VmsMappingDocument {
-        log.debug("$vmsType 유형의 매핑 규칙 조회")
+        log.info("mapping rules for VMS type $vmsType")
         return fieldMappingRepository.getMappingRules(vmsType)
     }
 
@@ -29,7 +30,7 @@ class FieldMappingService(
      * 모든 VMS 유형의 매핑 규칙 조회
      */
     suspend fun getAllMappingRules(): List<VmsMappingDocument> {
-        log.debug("모든 VMS 유형의 매핑 규칙 조회")
+        log.info("mapping rules for all VMS types")
         return fieldMappingRepository.getAllMappingRules()
     }
 
@@ -38,9 +39,16 @@ class FieldMappingService(
      */
     suspend fun addTransformation(
         vmsType: String,
-        transformation: FieldTransformation
+        transformationRequest: TransformationRequest
     ): VmsMappingDocument {
-        log.info("$vmsType 유형의 변환 규칙 추가: ${transformation.sourceField} -> ${transformation.targetField} [${transformation.transformationType}]")
+        val transformation = FieldTransformation(
+            sourceField = transformationRequest.sourceField,
+            targetField = transformationRequest.targetField,
+            transformationType = transformationRequest.transformationType,
+            parameters = transformationRequest.parameters
+        )
+
+        log.info("$vmsType VSM type mapping rules added: ${transformation.sourceField} -> ${transformation.targetField} [${transformation.transformationType}]")
         
         val mappingRules = fieldMappingRepository.getMappingRules(vmsType)
         val updatedTransformations = mappingRules.transformations.toMutableList()
@@ -61,12 +69,12 @@ class FieldMappingService(
         vmsType: String,
         transformationIndex: Int
     ): VmsMappingDocument {
-        log.info("$vmsType 유형의 변환 규칙 삭제: 인덱스 $transformationIndex")
+        log.info("$vmsType VMS type transformation rule delete: index $transformationIndex")
         
         val mappingRules = fieldMappingRepository.getMappingRules(vmsType)
         
         if (transformationIndex < 0 || transformationIndex >= mappingRules.transformations.size) {
-            throw IllegalArgumentException("유효하지 않은 변환 규칙 인덱스: $transformationIndex")
+            throw IllegalArgumentException("invalid transformation index: $transformationIndex")
         }
         
         val updatedTransformations = mappingRules.transformations.toMutableList()
@@ -112,7 +120,7 @@ class FieldMappingService(
      * VMS 유형에 대한 매핑 규칙 전체 삭제
      */
     suspend fun deleteMappingRules(vmsType: String): Boolean {
-        log.info("$vmsType 유형의 매핑 규칙 전체 삭제")
+        log.info("deleting all $vmsType VMS mapping rules")
         return fieldMappingRepository.deleteMappingRules(vmsType)
     }
 
@@ -121,7 +129,7 @@ class FieldMappingService(
      * 특정 VMS 유형의 매핑을 초기 상태로 리셋
      */
     suspend fun resetMappingRules(vmsType: String): VmsMappingDocument {
-        log.info("$vmsType 유형의 매핑 규칙 초기화")
+        log.info("initializing $vmsType VMS mapping rules")
         
         // 기존 규칙 삭제
         fieldMappingRepository.deleteMappingRules(vmsType)

@@ -1,4 +1,4 @@
-package com.oms.vms
+package com.oms.vms.sync
 
 import com.oms.api.exception.ApiAccessException
 import org.bson.Document
@@ -9,8 +9,6 @@ import org.springframework.http.HttpStatus
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
-import javax.script.ScriptEngineManager
-import javax.script.SimpleBindings
 
 /**
  * VMS 필드 매핑 구성 클래스

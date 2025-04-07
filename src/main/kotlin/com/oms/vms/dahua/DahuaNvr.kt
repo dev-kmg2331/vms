@@ -3,24 +3,24 @@ package com.oms.vms.dahua
 import com.google.gson.JsonObject
 import com.oms.logging.gson.gson
 import com.oms.vms.DefaultVms
-import com.oms.vms.VmsSynchronizeUtil
+import com.oms.vms.VmsType
+import com.oms.vms.sync.VmsSynchronizeUtil
 import com.oms.vms.config.DigestAuthenticatorClient
 import com.oms.vms.config.VmsConfig
 import com.oms.vms.persistence.mongo.repository.ReactiveMongoRepo
 import kotlinx.coroutines.reactor.awaitSingle
-import org.springframework.context.annotation.Profile
 import org.springframework.stereotype.Component
 import org.springframework.web.reactive.function.client.WebClient
 import java.util.regex.Pattern
 
-@Component
+@Component(value = "dahua")
 class DahuaNvr(
     private val webClient: WebClient,
     private val vmsConfig: VmsConfig,
     private val reactiveMongoRepo: ReactiveMongoRepo
 ) : DefaultVms() {
     private val client: DigestAuthenticatorClient = DigestAuthenticatorClient(webClient, vmsConfig.id, vmsConfig.password)
-    private val vmsType = "dahua"
+    override val type = VmsType.DAHUA.serviceName
 
     override suspend fun download() {
         TODO("Not yet implemented")
@@ -34,7 +34,7 @@ class DahuaNvr(
         VmsSynchronizeUtil.synchronize(
             rawResponse = response,
             uri = uri,
-            vmsType = vmsType,
+            vmsType = type,
             mongoRepo = reactiveMongoRepo,
             processJsonData = processJsonData
         )

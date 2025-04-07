@@ -1,9 +1,8 @@
 package com.oms.vms.naiz
 
 import com.google.gson.JsonObject
-import com.google.gson.reflect.TypeToken
 import com.oms.logging.gson.gson
-import com.oms.vms.VmsSynchronizeUtil
+import com.oms.vms.sync.VmsSynchronizeUtil
 import com.oms.vms.config.VmsConfig
 import com.oms.vms.persistence.mongo.repository.ReactiveMongoRepo
 import io.mockk.*

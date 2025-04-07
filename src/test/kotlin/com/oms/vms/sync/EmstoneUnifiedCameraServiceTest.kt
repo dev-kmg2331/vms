@@ -1,18 +1,16 @@
-package com.oms.vms
+package com.oms.vms.sync
 
+import com.oms.vms.Vms
 import com.oms.vms.config.VmsConfig
 import com.oms.vms.emstone.EmstoneNvr
 import com.oms.vms.mongo.docs.UnifiedCamera
-import com.oms.vms.mongo.repo.FieldMappingRepository
 import com.oms.vms.persistence.mongo.repository.ReactiveMongoRepo
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.reactive.asFlow
-import kotlinx.coroutines.reactive.awaitFirst
 import kotlinx.coroutines.reactive.awaitSingle
 import kotlinx.coroutines.test.runTest
 import org.bson.Document
 import org.junit.jupiter.api.Assertions.*
-import org.junit.jupiter.api.DisplayName
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
@@ -30,9 +28,6 @@ import kotlin.test.Test
 @SpringBootTest
 @ActiveProfiles("test")
 class EmstoneUnifiedCameraServiceTest {
-
-    @Autowired
-    private lateinit var fieldMappingRepository: FieldMappingRepository
 
     @Autowired
     private lateinit var mongoTemplate: ReactiveMongoTemplate

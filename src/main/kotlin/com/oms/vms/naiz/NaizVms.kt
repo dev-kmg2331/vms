@@ -4,7 +4,7 @@ import com.google.gson.JsonObject
 import com.google.gson.reflect.TypeToken
 import com.oms.logging.gson.gson
 import com.oms.vms.DefaultVms
-import com.oms.vms.VmsSynchronizeUtil
+import com.oms.vms.sync.VmsSynchronizeUtil
 import com.oms.vms.config.VmsConfig
 import com.oms.vms.persistence.mongo.repository.ReactiveMongoRepo
 import kotlinx.coroutines.reactor.awaitSingle
@@ -13,13 +13,14 @@ import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.stereotype.Component
 import org.springframework.web.reactive.function.client.WebClient
 
-@Component
+@Component(value = "naiz")
 class NaizVms(
     @Qualifier("naiz")
     private val webClient: WebClient,
     private val vmsConfig: VmsConfig,
     private val mongoRepo: ReactiveMongoRepo
 ) : DefaultVms() {
+    override val type: String = "naiz"
 
     override suspend fun download() {
     }

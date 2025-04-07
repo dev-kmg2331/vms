@@ -4,22 +4,22 @@ import com.google.gson.JsonObject
 import com.google.gson.reflect.TypeToken
 import com.oms.logging.gson.gson
 import com.oms.vms.DefaultVms
-import com.oms.vms.VmsSynchronizeUtil
+import com.oms.vms.sync.VmsSynchronizeUtil
 import com.oms.vms.config.VmsConfig
 import com.oms.vms.persistence.mongo.repository.ReactiveMongoRepo
 import kotlinx.coroutines.reactor.awaitSingle
 import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.stereotype.Component
 import org.springframework.web.reactive.function.client.WebClient
-import java.time.format.DateTimeFormatter
 
-@Component
+@Component(value = "emstone")
 class EmstoneNvr(
     @Qualifier("emstone")
     private val webClient: WebClient,
     private val vmsConfig: VmsConfig,
     private val reactiveMongoRepo: ReactiveMongoRepo
 ) : DefaultVms() {
+    override val type: String = "emstone"
 
     override suspend fun synchronize() {
         val uri = "/api/cameras"

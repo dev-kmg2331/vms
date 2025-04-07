@@ -1,12 +1,10 @@
-package com.oms.vms
+package com.oms.vms.sync
 
 import com.google.gson.JsonElement
 import com.google.gson.JsonObject
 import com.oms.vms.persistence.mongo.repository.ReactiveMongoRepo
 import format
 import org.bson.Document
-import org.springframework.web.reactive.function.client.WebClient
-import reactor.core.publisher.Mono
 import java.time.LocalDateTime
 import java.util.*
 

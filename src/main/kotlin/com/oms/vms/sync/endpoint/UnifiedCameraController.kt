@@ -1,13 +1,12 @@
-package com.oms.vms.endpoint
+package com.oms.vms.sync.endpoint
 
-import com.oms.vms.UnifiedCameraService
-import com.oms.vms.mongo.docs.UnifiedCamera
+import com.oms.api.response.ResponseUtil
+import com.oms.vms.sync.UnifiedCameraService
 import org.bson.Document
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
-import reactor.core.publisher.Flux
 
 /**
  * 통합 카메라 관리 컨트롤러
@@ -24,15 +23,13 @@ class UnifiedCameraController(
      * 특정 VMS 유형의 카메라 데이터 동기화
      */
     @PostMapping("/sync/{vmsType}")
-    suspend fun synchronizeVmsData(@PathVariable vmsType: String): ResponseEntity<Map<String, String>> {
+    suspend fun synchronizeVmsData(@PathVariable vmsType: String): ResponseEntity<*> {
         return try {
             unifiedCameraService.synchronizeVmsData(vmsType)
-            val response = mapOf("status" to "success", "message" to "$vmsType 유형의 카메라 데이터가 성공적으로 동기화되었습니다.")
-            ResponseEntity.ok(response)
+            ResponseUtil.success()
         } catch (e: Exception) {
-            log.error("$vmsType 유형의 카메라 데이터 동기화 중 오류 발생: ${e.message}", e)
-            val response = mapOf("status" to "error", "message" to "동기화 중 오류 발생: ${e.message}")
-            ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response)
+            log.error("internal error during $vmsType VMS synchronization.: ${e.message}", e)
+            ResponseUtil.fail(HttpStatus.INTERNAL_SERVER_ERROR, "internal error during synchronization.")
         }
     }
 
@@ -40,31 +37,24 @@ class UnifiedCameraController(
      * 통합된 모든 카메라 데이터 조회
      */
     @GetMapping
-    fun getAllUnifiedCameras(): Flux<UnifiedCamera> {
-        return unifiedCameraService.getAllUnifiedCameras()
-    }
+    suspend fun getAllUnifiedCameras(): ResponseEntity<*> =
+        ResponseUtil.success(unifiedCameraService.getAllUnifiedCameras())
 
     /**
      * 특정 VMS 유형의 통합 카메라 데이터 조회
      */
     @GetMapping("/type/{vmsType}")
-    fun getUnifiedCamerasByVmsType(@PathVariable vmsType: String): Flux<UnifiedCamera> {
-        return unifiedCameraService.getUnifiedCamerasByVmsType(vmsType)
-    }
+    suspend fun getUnifiedCamerasByVmsType(@PathVariable vmsType: String): ResponseEntity<*> =
+        ResponseUtil.success(unifiedCameraService.getUnifiedCamerasByVmsType(vmsType))
 
     /**
      * VMS 유형의 필드 구조 분석
      */
     @GetMapping("/analyze/{vmsType}")
-    suspend fun analyzeVmsFieldStructure(@PathVariable vmsType: String): ResponseEntity<Document?> {
+    suspend fun analyzeVmsFieldStructure(@PathVariable vmsType: String): ResponseEntity<*> {
         return try {
-            val analysisResult = unifiedCameraService.analyzeVmsFieldStructure(vmsType)
-            if (analysisResult != null) {
-                ResponseEntity.ok(analysisResult)
-            } else {
-                ResponseEntity.status(HttpStatus.NOT_FOUND)
-                    .body(Document("message", "$vmsType 유형의 카메라 데이터를 찾을 수 없습니다."))
-            }
+            return unifiedCameraService.analyzeVmsFieldStructure(vmsType)?.let { ResponseUtil.success(it) }
+                ?: ResponseUtil.fail(HttpStatus.BAD_REQUEST)
         } catch (e: Exception) {
             log.error("$vmsType 유형의 필드 구조 분석 중 오류 발생: ${e.message}", e)
             ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)

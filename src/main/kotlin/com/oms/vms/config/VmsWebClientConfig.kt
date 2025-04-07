@@ -1,5 +1,6 @@
 package com.oms.vms.config
 
+import com.oms.ExcludeInTestProfile
 import io.netty.handler.ssl.SslContextBuilder
 import io.netty.handler.ssl.util.InsecureTrustManagerFactory
 import org.json.JSONObject
@@ -44,6 +45,7 @@ class VmsWebClientConfig(
 
     @Bean
     @Qualifier("realhub")
+    @ExcludeInTestProfile
     fun realhubWebClient(): WebClient {
         val serverAddr = environment["api.url.relay"] ?: "localhost:8000"
 

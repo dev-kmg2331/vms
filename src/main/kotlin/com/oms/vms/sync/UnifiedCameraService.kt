@@ -1,4 +1,4 @@
-package com.oms.vms
+package com.oms.vms.sync
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.oms.logging.gson.gson
@@ -10,6 +10,8 @@ import com.oms.vms.mongo.docs.VmsTypeInfo
 import com.oms.vms.mongo.repo.FieldMappingRepository
 import com.oms.vms.mongo.repo.VmsTypeRegistry
 import format
+import kotlinx.coroutines.flow.toList
+import kotlinx.coroutines.reactive.asFlow
 import kotlinx.coroutines.reactive.awaitFirst
 import kotlinx.coroutines.reactive.awaitFirstOrNull
 import kotlinx.coroutines.reactor.awaitSingle
@@ -19,7 +21,6 @@ import org.springframework.data.mongodb.core.ReactiveMongoTemplate
 import org.springframework.data.mongodb.core.query.Criteria
 import org.springframework.data.mongodb.core.query.Query
 import org.springframework.stereotype.Service
-import reactor.core.publisher.Flux
 import java.time.LocalDateTime
 import java.util.*
 
@@ -112,19 +113,19 @@ class UnifiedCameraService(
     /**
      * 통합된 모든 카메라 데이터 가져오기
      */
-    fun getAllUnifiedCameras(): Flux<UnifiedCamera> {
-        return mongoTemplate.findAll(UnifiedCamera::class.java, unifiedCollection)
+    suspend fun getAllUnifiedCameras(): List<UnifiedCamera> {
+        return mongoTemplate.findAll(UnifiedCamera::class.java, unifiedCollection).asFlow().toList()
     }
 
     /**
      * 특정 VMS 유형의 통합 카메라 데이터 가져오기
      */
-    fun getUnifiedCamerasByVmsType(vmsType: String): Flux<UnifiedCamera> {
+    suspend fun getUnifiedCamerasByVmsType(vmsType: String): List<UnifiedCamera> {
         return mongoTemplate.find(
             Query.query(Criteria.where("vmsType").`is`(vmsType)),
             UnifiedCamera::class.java,
             unifiedCollection
-        )
+        ).asFlow().toList()
     }
 
     /**

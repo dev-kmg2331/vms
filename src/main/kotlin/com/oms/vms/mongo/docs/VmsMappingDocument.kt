@@ -1,7 +1,7 @@
 package com.oms.vms.mongo.docs
 
 import com.fasterxml.jackson.annotation.JsonInclude
-import com.oms.vms.FieldTransformation
+import com.oms.vms.sync.FieldTransformation
 import format
 import org.springframework.data.annotation.Id
 import org.springframework.data.mongodb.core.mapping.Document
