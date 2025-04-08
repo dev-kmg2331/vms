@@ -64,7 +64,7 @@ class UnifiedCameraService(
 
         // 채널 ID 변환 규칙 검증
         mappingRules.channelIdTransformation ?: throw ApiAccessException(
-            HttpStatus.FORBIDDEN,
+            HttpStatus.BAD_REQUEST,
             "Channel ID transformation rule must be defined first for $vmsType VMS"
         )
 
@@ -329,30 +329,5 @@ class UnifiedCameraService(
                 document?.javaClass?.simpleName ?: "null"
             }
         }
-    }
-
-    /**
-     * 통합 카메라 스키마를 새 필드로 확장합니다
-     *
-     * 이 메서드는 실제 스키마를 수정하는 대신 별도의 컬렉션에 스키마 확장 정보를 기록합니다
-     * (MongoDB의 유연한 스키마 덕분에 가능).
-     *
-     * @param fieldName 새 필드의 이름
-     * @param fieldType 새 필드의 타입
-     * @return 확장이 성공적으로 기록되었으면 true
-     */
-    suspend fun extendUnifiedCameraSchema(fieldName: String, fieldType: String): Boolean {
-        log.info("Extending unified camera schema with new field: {} ({})", fieldName, fieldType)
-
-        // 스키마 확장 기록
-        val schemaExtension = Document()
-        schemaExtension["fieldName"] = fieldName
-        schemaExtension["fieldType"] = fieldType
-        schemaExtension["addedAt"] = LocalDateTime.now()
-
-        mongoTemplate.save(schemaExtension, "unified_camera_schema_extensions").awaitFirst()
-
-        log.info("Schema extension for field '{}' recorded successfully", fieldName)
-        return true
     }
 }

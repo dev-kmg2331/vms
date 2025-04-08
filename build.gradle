@@ -22,7 +22,7 @@ repositories {
         url = uri('https://ompass.kr:5443/repository/omeye-common/')
         credentials {
             username = findProperty("oms-nexus.username") ?: "admin"
-            password = findProperty("oms-nexus.password") ?: "oms20190211"
+            password = findProperty("oms-nexus.password") ?: "admin"
         }
     }
 }

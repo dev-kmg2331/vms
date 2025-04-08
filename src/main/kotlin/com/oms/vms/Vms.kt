@@ -1,5 +1,6 @@
 package com.oms.vms
 
+import com.fasterxml.jackson.annotation.JsonProperty
 import com.oms.api.exception.ApiAccessException
 import com.oms.vms.dahua.DahuaNvr
 import com.oms.vms.emstone.EmstoneNvr
@@ -21,8 +22,12 @@ interface Vms {
 }
 
 enum class VmsType(val serviceName: String, val serviceClass: Class<*>) {
+    // @JsonProperty required for swagger...!
+    @JsonProperty("emstone")
     EMSTONE("emstone", EmstoneNvr::class.java),
+    @JsonProperty("naiz")
     NAIZ("naiz", NaizVms::class.java),
+    @JsonProperty("dahua")
     DAHUA("dahua", DahuaNvr::class.java);
 
     companion object {
@@ -30,6 +35,8 @@ enum class VmsType(val serviceName: String, val serviceClass: Class<*>) {
             return entries.find { it.serviceName == serviceName }
                 ?: throw IllegalArgumentException("service name $serviceName is not defined.")
         }
+
+        val serviceNames = VmsType.entries.map { it.serviceName }
     }
 }
 
