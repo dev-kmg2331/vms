@@ -1,5 +1,6 @@
 package com.oms.vms.sync
 
+import com.fasterxml.jackson.annotation.JsonIgnore
 import com.oms.api.exception.ApiAccessException
 import org.bson.Document
 import org.slf4j.Logger
@@ -33,12 +34,13 @@ data class FieldTransformation(
     val targetField: String,
     val transformationType: TransformationType, // 변환 유형
     val parameters: Map<String, String> = mapOf() // 변환에 필요한 추가 매개변수
-): Transformation
+) : Transformation
 
 data class ChannelIdTransFormation(
     override val sourceField: String,
-    val apply : (Document) -> String = { doc: Document -> doc.getString(sourceField) }
-): Transformation
+    @JsonIgnore
+    val apply: (Document) -> String = { doc: Document -> doc[sourceField]!!.toString() }
+) : Transformation
 
 /**
  * 필드 변환 유형

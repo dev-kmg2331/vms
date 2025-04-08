@@ -45,7 +45,7 @@ class FieldMappingServiceTest {
         // 테스트용 매핑 문서 생성
         testMappingDocument = VmsMappingDocument(
             id = UUID.randomUUID().toString(),
-            vmsType = vmsType,
+            vms = vmsType,
             transformations = listOf(),
             description = "Test mapping document",
             createdAt = LocalDateTime.now().format(),
@@ -76,7 +76,7 @@ class FieldMappingServiceTest {
 
         // then
         assertNotNull(result, "Mapping rules should not be null")
-        assertEquals(vmsType, result.vmsType, "VMS type should match")
+        assertEquals(vmsType, result.vms, "VMS type should match")
 
         coVerify(exactly = 1) { fieldMappingRepository.getMappingRules(vmsType) }
     }
@@ -87,7 +87,7 @@ class FieldMappingServiceTest {
         // given
         val mappingDocuments = listOf(
             testMappingDocument,
-            testMappingDocument.copy(vmsType = "another-vms")
+            testMappingDocument.copy(vms = "another-vms")
         )
 
         coEvery { fieldMappingRepository.getAllMappingRules() } returns mappingDocuments
@@ -241,7 +241,7 @@ class FieldMappingServiceTest {
         coEvery { fieldMappingRepository.deleteMappingRules(vmsType) } returns true
 
         // when
-        val result = fieldMappingService.deleteMappingRules(vmsType)
+        val result = fieldMappingService.deleteAllMappingRules(vmsType)
 
         // then
         assertTrue(result, "Deletion should be successful")

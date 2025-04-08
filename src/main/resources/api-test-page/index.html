@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="ko">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VMS API 테스트</title>
+    <link rel="stylesheet" href="./index.css" rel="stylesheet" type="text/css">
+</head>
+
+<body>
+    <h1>VMS API 테스트 도구</h1>
+    <div class="container">
+        <div class="api-list">
+            <h2>API 목록</h2>
+            <div id="apiItems">
+                <!-- API 항목들이 여기에 동적으로 추가됩니다 -->
+            </div>
+        </div>
+        <div class="api-content">
+            <h2 id="apiTitle">API 세부 정보</h2>
+            <div class="info-section">
+                <p id="apiDescription">API를 선택하세요.</p>
+                <p id="apiEndpoint"></p>
+            </div>
+
+            <div class="tabs">
+                <div class="tab active" onclick="changeTab('request')">요청</div>
+                <div class="tab" onclick="changeTab('response')">응답</div>
+            </div>
+
+            <div id="requestTab" class="tab-content active">
+                <h3>요청 파라미터</h3>
+                <div id="pathParamsForm" class="params-container">
+                    <h4>경로 파라미터</h4>
+                    <!-- 경로 파라미터 폼이 여기에 생성됩니다 -->
+                </div>
+
+                <div id="queryParamsForm" class="params-container">
+                    <h4>쿼리 파라미터</h4>
+                    <!-- 쿼리 파라미터 폼이 여기에 생성됩니다 -->
+                </div>
+
+                <div id="requestBodyForm" class="params-container">
+                    <h4>요청 본문</h4>
+                    <!-- API별 요청 본문 폼이 여기에 생성됩니다 -->
+                </div>
+
+                <button id="sendButton" onclick="sendRequest()">요청 보내기</button>
+            </div>
+
+            <div id="responseTab" class="tab-content">
+                <h3>응답 결과</h3>
+                <div class="response-area">
+                    <div class="response-container" id="responseData">아직 응답이 없습니다.</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+<script src="./index.js"></script>

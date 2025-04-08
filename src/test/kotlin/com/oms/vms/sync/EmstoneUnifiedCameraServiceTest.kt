@@ -3,7 +3,9 @@ package com.oms.vms.sync
 import com.oms.vms.Vms
 import com.oms.vms.config.VmsConfig
 import com.oms.vms.emstone.EmstoneNvr
-import com.oms.vms.mongo.docs.UnifiedCamera
+import com.oms.vms.mongo.docs.*
+import com.oms.vms.mongo.repo.FieldMappingRepository
+import format
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.reactive.asFlow
 import kotlinx.coroutines.reactive.awaitSingle
@@ -20,6 +22,7 @@ import org.springframework.http.HttpHeaders
 import org.springframework.http.MediaType
 import org.springframework.test.context.ActiveProfiles
 import org.springframework.web.reactive.function.client.WebClient
+import java.time.LocalDateTime
 import java.util.*
 import kotlin.test.BeforeTest
 import kotlin.test.Test
@@ -34,6 +37,9 @@ class EmstoneUnifiedCameraServiceTest {
     @Autowired
     private lateinit var vmsSynchronizeService: VmsSynchronizeService
 
+    @Autowired
+    private lateinit var mappingRepository: FieldMappingRepository
+    
     @Autowired
     private lateinit var service: UnifiedCameraService
 
@@ -61,10 +67,18 @@ class EmstoneUnifiedCameraServiceTest {
 
         vms = EmstoneNvr(webClient, vmsConfig, vmsSynchronizeService)
 
-        mongoTemplate.remove(
-            Query.query(Criteria.where("vmsType").`is`("emstone")),
-            "vms_field_mappings"
-        ).block()
+        listOf(
+//            VMS_CAMERA_UNIFIED,
+            VMS_CAMERA_KEYS,
+            VMS_CAMERA,
+            VMS_RAW_JSON,
+            VMS_FIELD_MAPPINGS
+        ).forEach {
+            mongoTemplate.remove(
+                Query.query(Criteria.where("vms").`is`("emstone")),
+                it
+            ).block()
+        }
     }
 
     @Test
@@ -74,7 +88,7 @@ class EmstoneUnifiedCameraServiceTest {
 
         // 먼저 VMS 데이터를 확인 (테스트 환경 설정에서 이미 생성됨)
         val vmsCamera = mongoTemplate.findOne(
-            Query.query(Criteria.where("vms.type").`is`("emstone")),
+            Query.query(Criteria.where("vms").`is`("emstone")),
             Document::class.java,
             "vms_camera"
         ).block()
@@ -82,7 +96,7 @@ class EmstoneUnifiedCameraServiceTest {
         assertNotNull(vmsCamera, "VMS camera data should exist")
         assertEquals(
             "emstone",
-            vmsCamera?.get("vms", Document::class.java)?.get("type"),
+            vmsCamera?.get("vms", String::class.java),
             "VMS type should be 'emstone'"
         )
 
@@ -93,7 +107,7 @@ class EmstoneUnifiedCameraServiceTest {
         // then
         // 통합 카메라 데이터가 성공적으로 생성되었는지 확인
         val unifiedCameras = mongoTemplate.find(
-            Query.query(Criteria.where("vmsType").`is`("emstone")),
+            Query.query(Criteria.where("vms").`is`("emstone")),
             UnifiedCamera::class.java,
             "vms_camera_unified"
         ).asFlow().toList()
@@ -104,13 +118,10 @@ class EmstoneUnifiedCameraServiceTest {
         unifiedCameras.forEach {
             val document = mongoTemplate.find(
                 Query.query(
-                    Criteria.where("vms.type").`is`("emstone")
-                        .andOperator(
-                            Criteria.where("id").`is`(it.channelID)
-                        )
+                    Criteria.where("id").`is`(it.channelID.toInt())
                 ),
                 Document::class.java,
-                "vms_camera"
+                VMS_CAMERA
             ).awaitSingle()
 
             assertEquals(document.getString("name"), it.name, "Camera name should be correctly mapped")
@@ -131,10 +142,16 @@ class EmstoneUnifiedCameraServiceTest {
      * 실제 데이터 구조에 맞춰 변환 규칙 정의
      */
     private suspend fun setupEmstoneTransformations() {
+        val mappingRules = mappingRepository.getMappingRules("emstone")
+
+        mappingRules.channelIdTransformation = ChannelIdTransFormation("id")
+
+        mappingRepository.updateMappingRules(mappingRules)
+
         // PTZ 지원 여부 변환
         val ptzTransformation = FieldTransformation(
             sourceField = "has_ptz",
-            targetField = "supportsPTZ",
+            targetField = "supports_PTZ",
             transformationType = TransformationType.BOOLEAN_CONVERSION
         )
 
@@ -148,53 +165,67 @@ class EmstoneUnifiedCameraServiceTest {
         // 채널 이름 변환 (address 필드를 채널 이름으로 사용)
         val channelNameTransformation = FieldTransformation(
             sourceField = "address",
-            targetField = "channelName",
+            targetField = "channel_name",
             transformationType = TransformationType.DEFAULT_CONVERSION
         )
 
         // 채널 번호 변환
         val channelNumberTransformation = FieldTransformation(
             sourceField = "id",
-            targetField = "channelIndex",
+            targetField = "channel_ID",
             transformationType = TransformationType.NUMBER_CONVERSION
         )
 
         // 활성화 상태 변환
         val enabledTransformation = FieldTransformation(
             sourceField = "connected",
-            targetField = "isEnabled",
+            targetField = "is_enabled",
             transformationType = TransformationType.BOOLEAN_CONVERSION
         )
 
         // 매핑 규칙 등록
-        service.registerTransformation("emstone", ptzTransformation)
-        service.registerTransformation("emstone", nameTransformation)
-        service.registerTransformation("emstone", channelNameTransformation)
-        service.registerTransformation("emstone", channelNumberTransformation)
-        service.registerTransformation("emstone", enabledTransformation)
+        registerTransformation("emstone", ptzTransformation)
+        registerTransformation("emstone", nameTransformation)
+        registerTransformation("emstone", channelNameTransformation)
+        registerTransformation("emstone", channelNumberTransformation)
+        registerTransformation("emstone", enabledTransformation)
 
         // 원본 ID 매핑 추가
-        service.registerTransformation(
+        registerTransformation(
             "emstone", FieldTransformation(
                 sourceField = "id",
-                targetField = "originalId",
+                targetField = "original_id",
                 transformationType = TransformationType.STRING_FORMAT,
                 parameters = mapOf("format" to "%s")
             )
         )
+    }
 
-        // 생성 시간 매핑 추가
-        service.registerTransformation(
-            "emstone", FieldTransformation(
-                sourceField = "created_at",
-                targetField = "createdAt",
-                transformationType = TransformationType.DATE_FORMAT,
-                parameters = mapOf(
-                    "sourceFormat" to "yyyy-MM-dd HH:mm:ss",
-                    "targetFormat" to "yyyy-MM-dd HH:mm:ss"
-                )
-            )
+    private suspend fun registerTransformation(
+        vmsType: String,
+        transformation: FieldTransformation
+    ): VmsMappingDocument {
+        log.info(
+            "Registering new transformation for {} VMS: {} -> {} ({})",
+            vmsType,
+            transformation.sourceField,
+            transformation.targetField,
+            transformation.transformationType
         )
+
+        // 현재 매핑 규칙 가져오기
+        val mappingRules = mappingRepository.getMappingRules(vmsType)
+
+        // 새 변환 추가
+        val updatedTransformations = mappingRules.transformations.toMutableList()
+        updatedTransformations.add(transformation)
+
+        // 업데이트된 매핑 규칙 저장
+        val updatedRules = mappingRules.copy(
+            transformations = updatedTransformations,
+            updatedAt = LocalDateTime.now().format()
+        )
+
+        return mappingRepository.updateMappingRules(updatedRules)
     }
 }
-

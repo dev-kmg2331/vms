@@ -125,7 +125,7 @@ class FieldMappingController(
     @DeleteMapping("/{vmsType}")
     suspend fun deleteMappingRules(@PathVariable vmsType: String): ResponseEntity<*> {
         return try {
-            val deleted = fieldMappingService.deleteMappingRules(vmsType)
+            val deleted = fieldMappingService.deleteAllMappingRules(vmsType)
             ResponseUtil.success(object {
                 val deleted = deleted
             })

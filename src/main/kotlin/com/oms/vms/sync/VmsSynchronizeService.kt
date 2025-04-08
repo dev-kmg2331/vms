@@ -173,7 +173,7 @@ class VmsSynchronizeService(
         }
 
         return mongoTemplate.findOne(
-            Query.query(Criteria.where("vms_type").`is`(vms.serviceName)),
+            Query.query(Criteria.where("vms").`is`(vms.serviceName)),
             Document::class.java,
             "vms_camera_keys"
         ).awaitFirstOrNull() ?: throw ApiAccessException(HttpStatus.BAD_REQUEST, "no keys found for VMS type: $vmsType")

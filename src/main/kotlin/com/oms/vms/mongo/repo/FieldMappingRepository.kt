@@ -1,5 +1,6 @@
 package com.oms.vms.mongo.repo
 
+import com.oms.vms.mongo.docs.VMS_FIELD_MAPPINGS
 import com.oms.vms.mongo.docs.VmsMappingDocument
 import format
 import kotlinx.coroutines.reactive.awaitFirst
@@ -19,63 +20,63 @@ class FieldMappingRepository(
     private val mongoTemplate: ReactiveMongoTemplate
 ) {
     // 기본 매핑 규칙 컬렉션 이름
-    private val mappingCollection = "vms_field_mappings"
-    
+
     /**
      * 특정 VMS 유형에 대한 현재 매핑 규칙을 가져옴
      * DB에 저장된 규칙이 없으면 기본 매핑 생성
      */
     suspend fun getMappingRules(vmsType: String): VmsMappingDocument {
         return mongoTemplate.findOne(
-            Query.query(Criteria.where("vmsType").`is`(vmsType)),
+            Query.query(Criteria.where("vms").`is`(vmsType)),
             VmsMappingDocument::class.java,
-            mappingCollection
+            VMS_FIELD_MAPPINGS
         ).awaitFirstOrNull()
             ?: createDefaultMapping(vmsType)
 //            ?: throw ApiAccessException(status = HttpStatus.BAD_REQUEST, message = "vms mapping not found")
     }
-    
+
     /**
      * 새로운 VMS 유형에 대한 기본 매핑 생성
      */
-    private suspend fun createDefaultMapping(vmsType: String): VmsMappingDocument {
+    suspend fun createDefaultMapping(vmsType: String): VmsMappingDocument {
         // 새 VMS 유형에 대한 기본 매핑 생성
         val defaultMapping = VmsMappingDocument(
-            vmsType = vmsType,
+            vms = vmsType,
             description = "Auto-generated default mapping for $vmsType"
         )
-        
-        return mongoTemplate.save(defaultMapping, mappingCollection).awaitFirst()
+
+        return mongoTemplate.save(defaultMapping, VMS_FIELD_MAPPINGS).awaitFirst()
     }
-    
+
     /**
      * 매핑 규칙을 업데이트하고 저장
      */
     suspend fun updateMappingRules(mapping: VmsMappingDocument): VmsMappingDocument {
         // 업데이트 시간 설정
         val updatedMapping = mapping.copy(updatedAt = LocalDateTime.now().format())
-        
-        return mongoTemplate.save(updatedMapping, mappingCollection).awaitFirst()
+        val query = Query.query(Criteria.where("_id").`is`(updatedMapping.id))
+        mongoTemplate.findAndReplace(query, updatedMapping, VMS_FIELD_MAPPINGS).awaitFirst()
+        return updatedMapping
     }
-    
+
     /**
      * 모든 VMS 매핑 규칙 가져오기
      */
     suspend fun getAllMappingRules(): List<VmsMappingDocument> {
-        return mongoTemplate.findAll(VmsMappingDocument::class.java, mappingCollection)
+        return mongoTemplate.findAll(VmsMappingDocument::class.java, VMS_FIELD_MAPPINGS)
             .collectList()
             .awaitFirst()
     }
-    
+
     /**
      * VMS 매핑 규칙 삭제
      */
     suspend fun deleteMappingRules(vmsType: String): Boolean {
         val result = mongoTemplate.remove(
             Query.query(Criteria.where("vmsType").`is`(vmsType)),
-            mappingCollection
+            VMS_FIELD_MAPPINGS
         ).awaitFirst()
-        
+
         return result.deletedCount > 0
     }
 }

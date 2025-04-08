@@ -1,10 +1,12 @@
 package com.oms.vms.sync
 
+import com.oms.api.exception.ApiAccessException
 import com.oms.vms.sync.endpoint.TransformationRequest
 import com.oms.vms.mongo.docs.VmsMappingDocument
 import com.oms.vms.mongo.repo.FieldMappingRepository
 import format
 import org.slf4j.LoggerFactory
+import org.springframework.http.HttpStatus
 import org.springframework.stereotype.Service
 import java.time.LocalDateTime
 
@@ -49,16 +51,16 @@ class FieldMappingService(
         )
 
         log.info("$vmsType VSM type mapping rules added: ${transformation.sourceField} -> ${transformation.targetField} [${transformation.transformationType}]")
-        
+
         val mappingRules = fieldMappingRepository.getMappingRules(vmsType)
         val updatedTransformations = mappingRules.transformations.toMutableList()
         updatedTransformations.add(transformation)
-        
+
         val updatedRule = mappingRules.copy(
             transformations = updatedTransformations,
             updatedAt = LocalDateTime.now().format()
         )
-        
+
         return fieldMappingRepository.updateMappingRules(updatedRule)
     }
 
@@ -70,21 +72,21 @@ class FieldMappingService(
         transformationIndex: Int
     ): VmsMappingDocument {
         log.info("$vmsType VMS type transformation rule delete: index $transformationIndex")
-        
+
         val mappingRules = fieldMappingRepository.getMappingRules(vmsType)
-        
+
         if (transformationIndex < 0 || transformationIndex >= mappingRules.transformations.size) {
-            throw IllegalArgumentException("invalid transformation index: $transformationIndex")
+            throw ApiAccessException(HttpStatus.BAD_REQUEST, "invalid transformation index: $transformationIndex")
         }
-        
+
         val updatedTransformations = mappingRules.transformations.toMutableList()
         updatedTransformations.removeAt(transformationIndex)
-        
+
         val updatedRule = mappingRules.copy(
             transformations = updatedTransformations,
             updatedAt = LocalDateTime.now().format()
         )
-        
+
         return fieldMappingRepository.updateMappingRules(updatedRule)
     }
 
@@ -96,9 +98,9 @@ class FieldMappingService(
         sourceField: String
     ): List<FieldTransformation> {
         val mappingRules = fieldMappingRepository.getMappingRules(vmsType)
-        
-        return mappingRules.transformations.filter { 
-            it.sourceField == sourceField 
+
+        return mappingRules.transformations.filter {
+            it.sourceField == sourceField
         }
     }
 
@@ -110,16 +112,16 @@ class FieldMappingService(
         transformationType: TransformationType
     ): List<FieldTransformation> {
         val mappingRules = fieldMappingRepository.getMappingRules(vmsType)
-        
-        return mappingRules.transformations.filter { 
-            it.transformationType == transformationType 
+
+        return mappingRules.transformations.filter {
+            it.transformationType == transformationType
         }
     }
 
     /**
      * VMS 유형에 대한 매핑 규칙 전체 삭제
      */
-    suspend fun deleteMappingRules(vmsType: String): Boolean {
+    suspend fun deleteAllMappingRules(vmsType: String): Boolean {
         log.info("deleting all $vmsType VMS mapping rules")
         return fieldMappingRepository.deleteMappingRules(vmsType)
     }
@@ -130,11 +132,11 @@ class FieldMappingService(
      */
     suspend fun resetMappingRules(vmsType: String): VmsMappingDocument {
         log.info("initializing $vmsType VMS mapping rules")
-        
+
         // 기존 규칙 삭제
         fieldMappingRepository.deleteMappingRules(vmsType)
-        
+
         // 새 기본 규칙 생성
-        return fieldMappingRepository.getMappingRules(vmsType)
+        return fieldMappingRepository.createDefaultMapping(vmsType)
     }
 }

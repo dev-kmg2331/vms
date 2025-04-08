@@ -35,7 +35,7 @@ data class UnifiedCamera(
     val rtspUrl: String?,                   // RTSP URL
 
     // 상태 정보
-    @Field("enabled")
+    @Field("is_enabled")
     val isEnabled: Boolean = true,          // 활성화 여부
     @Field("status")
     val status: String = "",                // 상태 (온라인/오프라인 등)
@@ -52,9 +52,9 @@ data class UnifiedCamera(
     @Field("original_id")
     val originalId: String = "",            // 원본 VMS의 카메라 ID
     @Field("created_at")
-    val createdAt: String = LocalDateTime.now().format(),  // 생성 시간
+    val createdAt: String,  // 생성 시간
     @Field("updated_at")
-    val updatedAt: String = LocalDateTime.now().format(),  // 업데이트 시간
+    var updatedAt: String,  // 업데이트 시간
 
     // 원본 데이터에 대한 참조
     @Field("source_reference")
