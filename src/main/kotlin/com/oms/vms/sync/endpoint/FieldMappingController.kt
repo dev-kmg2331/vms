@@ -104,43 +104,6 @@ class FieldMappingController(
     }
 
     /**
-     * 특정 VMS 유형의 키값 조회
-     */
-    @GetMapping("/{vmsType}/keys")
-    @Operation(
-        summary = "특정 VMS 유형의 키값 구조 조회",
-        description = "지정된 VMS 유형의 카메라 데이터 키 구조를 반환합니다. 매핑 규칙 생성 시 참조용으로 사용됩니다."
-    )
-    @ApiResponses(
-        value = [
-            ApiResponse(
-                responseCode = "200",
-                description = "키값 구조 조회 성공",
-                content = [Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = Schema(implementation = Document::class))]
-            ),
-            ApiResponse(responseCode = "400", description = "잘못된 요청 또는 키값을 찾을 수 없음"),
-            ApiResponse(responseCode = "500", description = "서버 오류")
-        ]
-    )
-    suspend fun getVmsTypeKeys(
-        @Parameter(
-            description = "VMS 유형",
-            required = true,
-            schema = Schema(type = "string", implementation = VmsType::class)
-        )
-        @PathVariable vmsType: String
-    ): ResponseEntity<*> {
-        return try {
-            val jsonKeys = vmsSynchronizeService.getVmsDataJsonKeys(vmsType)
-            log.info("Successfully retrieved keys for {} VMS type", vmsType)
-            return ResponseUtil.success(jsonKeys)
-        } catch (e: Exception) {
-            log.error("Error fetching keys for VMS type {}: {}", vmsType, e.message, e)
-            ResponseUtil.fail(HttpStatus.INTERNAL_SERVER_ERROR, "error fetching keys for VMS type: $vmsType")
-        }
-    }
-
-    /**
      * 필드 변환 규칙 추가
      */
     @PostMapping("/{vmsType}/transformation")
@@ -363,6 +326,38 @@ class FieldMappingController(
             ResponseUtil.fail(HttpStatus.INTERNAL_SERVER_ERROR, "error in finding all VMS types")
         }
     }
+
+    /**
+     * VMS 유형의 필드 구조 분석
+     */
+    @GetMapping("/analyze/{vmsType}")
+    @Operation(
+        summary = "VMS 필드 구조 분석",
+        description = "지정된 VMS 유형의 카메라 데이터 필드 구조를 분석합니다."
+    )
+    @ApiResponses(
+        value = [
+            ApiResponse(responseCode = "200", description = "필드 구조 분석 성공"),
+            ApiResponse(responseCode = "400", description = "필드 구조 분석 실패 - 잘못된 요청"),
+            ApiResponse(responseCode = "500", description = "필드 구조 분석 중 서버 오류")
+        ]
+    )
+    suspend fun analyzeVmsFieldStructure(
+        @Parameter(
+            description = "VMS 유형",
+            required = true,
+            schema = Schema(type = "string", implementation = VmsType::class)
+        )
+        @PathVariable vmsType: String
+    ): ResponseEntity<*> {
+        return try {
+            return vmsSynchronizeService.analyzeVmsFieldStructure(vmsType).let { ResponseUtil.success(it) }
+        } catch (e: Exception) {
+            log.error("Error analyzing field structure for {} VMS type: {}", vmsType, e.message, e)
+            ResponseUtil.fail(HttpStatus.INTERNAL_SERVER_ERROR, "unknown error in analyzing field structure")
+        }
+    }
+
 }
 
 /**

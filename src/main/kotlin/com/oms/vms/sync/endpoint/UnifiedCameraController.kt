@@ -99,37 +99,4 @@ class UnifiedCameraController(
         @PathVariable vmsType: String
     ): ResponseEntity<*> =
         ResponseUtil.success(unifiedCameraService.getUnifiedCamerasByVmsType(vmsType))
-
-    /**
-     * VMS 유형의 필드 구조 분석
-     */
-    @GetMapping("/analyze/{vmsType}")
-    @Operation(
-        summary = "VMS 필드 구조 분석",
-        description = "지정된 VMS 유형의 카메라 데이터 필드 구조를 분석합니다."
-    )
-    @ApiResponses(
-        value = [
-            ApiResponse(responseCode = "200", description = "필드 구조 분석 성공"),
-            ApiResponse(responseCode = "400", description = "필드 구조 분석 실패 - 잘못된 요청"),
-            ApiResponse(responseCode = "500", description = "필드 구조 분석 중 서버 오류")
-        ]
-    )
-    suspend fun analyzeVmsFieldStructure(
-        @Parameter(
-            description = "VMS 유형",
-            required = true,
-            schema = Schema(type = "string", implementation = VmsType::class)
-        )
-        @PathVariable vmsType: String
-    ): ResponseEntity<*> {
-        return try {
-            return unifiedCameraService.analyzeVmsFieldStructure(vmsType)?.let { ResponseUtil.success(it) }
-                ?: ResponseUtil.fail(HttpStatus.BAD_REQUEST)
-        } catch (e: Exception) {
-            log.error("Error analyzing field structure for {} VMS type: {}", vmsType, e.message, e)
-            ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body(Document("error", "필드 구조 분석 중 오류 발생: ${e.message}"))
-        }
-    }
 }

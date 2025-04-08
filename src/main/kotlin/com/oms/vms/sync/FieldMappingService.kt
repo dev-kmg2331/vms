@@ -1,9 +1,9 @@
 package com.oms.vms.sync
 
 import com.oms.api.exception.ApiAccessException
-import com.oms.vms.sync.endpoint.TransformationRequest
 import com.oms.vms.mongo.docs.VmsMappingDocument
 import com.oms.vms.mongo.repo.FieldMappingRepository
+import com.oms.vms.sync.endpoint.TransformationRequest
 import format
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
@@ -16,7 +16,7 @@ import java.time.LocalDateTime
  */
 @Service
 class FieldMappingService(
-    private val fieldMappingRepository: FieldMappingRepository
+    private val fieldMappingRepository: FieldMappingRepository,
 ) {
     private val log = LoggerFactory.getLogger(FieldMappingService::class.java)
 

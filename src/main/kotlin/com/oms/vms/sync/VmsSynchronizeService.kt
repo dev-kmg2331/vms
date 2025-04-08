@@ -3,9 +3,9 @@ package com.oms.vms.sync
 import com.google.gson.JsonElement
 import com.google.gson.JsonObject
 import com.oms.api.exception.ApiAccessException
-import com.oms.vms.VmsType
 import com.oms.vms.mongo.docs.VMS_CAMERA
 import com.oms.vms.mongo.docs.VMS_CAMERA_KEYS
+import com.oms.vms.mongo.docs.VMS_FIELD_ANALYSIS
 import com.oms.vms.mongo.docs.VMS_RAW_JSON
 import format
 import kotlinx.coroutines.reactive.awaitFirstOrNull
@@ -17,7 +17,6 @@ import org.springframework.data.mongodb.core.query.Criteria
 import org.springframework.data.mongodb.core.query.Query
 import org.springframework.http.HttpStatus
 import org.springframework.stereotype.Service
-import reactor.core.publisher.Mono
 import java.time.LocalDateTime
 import java.util.*
 
@@ -141,41 +140,106 @@ class VmsSynchronizeService(
         val jsonObjects = processJsonData(rawResponse)
 
         // 각 카메라 객체 처리 및 저장
-        jsonObjects.forEachIndexed { i, json ->
-            // 첫 번째 카메라 object 에서 key 추출
-            if (i == 0) {
-                val keys = extractKeys(json)
-
-                // 키 목록 저장
-                val keysDoc = createKeysDocument(keys, vmsType)
-                mongoTemplate.insert(keysDoc, VMS_CAMERA_KEYS).awaitSingle()
-            }
-
+        jsonObjects.forEach { json ->
             // 카메라 JSON 저장
             val cameraDoc = createCameraDocument(json, vmsType)
             mongoTemplate.insert(cameraDoc, VMS_CAMERA).awaitSingle()
         }
     }
 
+
     /**
-     * 특정 VMS 유형의 키값 구조 조회
-     * vms_camera_keys 컬렉션에서 키 구조 정보를 가져옴
+     * VMS 유형의 필드 구조를 분석하고 저장합니다
+     *
+     * 이 메서드는 다음과 같은 작업을 수행합니다:
+     * 1. VMS 유형에 대한 샘플 카메라 문서 검색
+     * 2. 문서 구조 분석
+     * 3. 분석 결과를 데이터베이스에 저장
+     *
+     * @param vmsType 분석할 VMS 유형
+     * @return 분석 문서, 또는 샘플을 찾지 못한 경우 null
      */
-    suspend fun getVmsDataJsonKeys(vmsType: String): Document {
-        log.info("fetching keys for VMS type: {}", vmsType)
+    suspend fun analyzeVmsFieldStructure(vmsType: String): Document {
+        log.info("Analyzing field structure for {} VMS", vmsType)
 
-        val vms: VmsType
+        // VMS 유형에 대한 샘플 카메라 문서 가져오기
+        val sampleCamera = mongoTemplate.findOne(
+            Query.query(Criteria.where("vms").`is`(vmsType)),
+            Document::class.java,
+            VMS_CAMERA
+        ).awaitFirstOrNull()
 
-        try {
-            vms = VmsType.findByServiceName(vmsType)
-        } catch (e: Exception) {
-            throw ApiAccessException(HttpStatus.BAD_REQUEST, e)
+        if (sampleCamera == null) {
+            log.warn("No sample camera found for $vmsType VMS")
+            throw ApiAccessException(HttpStatus.BAD_REQUEST, "No sample camera found for $vmsType VMS")
         }
 
-        return mongoTemplate.findOne(
-            Query.query(Criteria.where("vms").`is`(vms.serviceName)),
+        val document = mongoTemplate.find(
+            Query.query(Criteria.where("vms").`is`(vmsType)),
             Document::class.java,
-            "vms_camera_keys"
-        ).awaitFirstOrNull() ?: throw ApiAccessException(HttpStatus.BAD_REQUEST, "no keys found for VMS type: $vmsType")
+            VMS_FIELD_ANALYSIS
+        ).awaitFirstOrNull()
+
+        val analyzeDocumentStructure = analyzeDocumentStructure(sampleCamera)
+
+        if (document == null) {
+            // 분석 문서 생성
+            val fieldsDocument = Document()
+            fieldsDocument["_id"] = UUID.randomUUID().toString()
+            fieldsDocument["vms"] = vmsType
+            fieldsDocument["analyzed_at"] = LocalDateTime.now().format()
+            fieldsDocument["fields"] = analyzeDocumentStructure
+
+            log.info("Saving new field structure analysis for {} VMS", vmsType)
+
+            return mongoTemplate.save(fieldsDocument, VMS_FIELD_ANALYSIS).awaitSingle()
+        } else {
+            document["analyzed_at"] = LocalDateTime.now().format()
+            document["fields"] = analyzeDocumentStructure
+
+            log.info("Updating field structure analysis for {} VMS", vmsType)
+
+            return mongoTemplate.findAndReplace(
+                Query.query(Criteria.where("vms").`is`(vmsType)),
+                document,
+                VMS_FIELD_ANALYSIS
+            ).awaitSingle()
+        }
+    }
+
+    /**
+     * 문서의 구조를 재귀적으로 분석합니다
+     *
+     * 이 메서드는 다음과 같은 작업을 수행합니다:
+     * 1. 다양한 유형의 값(Document, List, 프리미티브) 처리
+     * 2. 필드 유형을 나타내는 구조 구축
+     *
+     * @param document 분석할 문서 또는 값
+     * @return 문서 구조의 표현
+     */
+    private fun analyzeDocumentStructure(document: Any?): Any {
+        return when (document) {
+            is Document -> {
+                // Document 객체의 경우 각 필드를 재귀적으로 분석
+                val result = Document()
+                document.forEach { (key, value) ->
+                    result[key] = analyzeDocumentStructure(value)
+                }
+                result
+            }
+
+            is List<*> -> {
+                // 리스트의 경우 첫 번째 요소를 샘플로 분석
+                if (document.isNotEmpty()) {
+                    return listOf(analyzeDocumentStructure(document[0]))
+                }
+                emptyList<Any>()
+            }
+
+            else -> {
+                // 기본 값의 경우 타입 이름 반환
+                document?.javaClass?.simpleName ?: "undefined"
+            }
+        }
     }
 }
