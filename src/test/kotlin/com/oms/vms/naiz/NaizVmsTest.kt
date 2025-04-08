@@ -1,10 +1,11 @@
 package com.oms.vms.naiz
 
+import com.google.gson.Gson
 import com.google.gson.JsonObject
 import com.oms.logging.gson.gson
-import com.oms.vms.sync.VmsSynchronizeUtil
 import com.oms.vms.config.VmsConfig
-import com.oms.vms.persistence.mongo.repository.ReactiveMongoRepo
+import com.oms.vms.mongo.docs.VMS_RAW_JSON
+import com.oms.vms.sync.VmsSynchronizeService
 import io.mockk.*
 import io.mockk.impl.annotations.MockK
 import io.mockk.junit5.MockKExtension
@@ -43,13 +44,16 @@ class NaizVmsTest {
     private lateinit var vms: NaizVms
 
     @Autowired
-    private lateinit var reactiveMongoRepo: ReactiveMongoRepo
+    private lateinit var mongoTemplate: ReactiveMongoTemplate
 
     @MockK
-    private lateinit var reactiveMongoRepoMock: ReactiveMongoRepo
+    private lateinit var mongoTemplateMock: ReactiveMongoTemplate
 
     @Autowired
-    private lateinit var mongoTemplate: ReactiveMongoTemplate
+    private lateinit var vmsSynchronizeService: VmsSynchronizeService
+
+    @MockK
+    private lateinit var vmsSynchronizeServiceMock: VmsSynchronizeService
 
     @MockK
     private lateinit var webClient: WebClient
@@ -78,9 +82,15 @@ class NaizVmsTest {
 
         every { responseSpec.bodyToMono(String::class.java) } returns Mono.just(rawXMLResponse)
 
-        // MockK ReactiveMongoRepo 설정
-        coEvery { reactiveMongoRepoMock.dropDocument(any()) } just Runs
-        coEvery { reactiveMongoRepoMock.insert(any(), any()) } returns Any()
+        vmsSynchronizeServiceMock = VmsSynchronizeService(mongoTemplateMock)
+
+        every { mongoTemplateMock.insert(any<Document>(), any<String>()) } returns Mono.empty()
+        every { mongoTemplateMock.insert(any<Document>(), any<String>()) } returns Mono.empty()
+        every { mongoTemplateMock.insert(any<Document>(), any<String>()) } returns Mono.empty()
+
+        every { mongoTemplateMock.remove(any<Query>(), any<String>()) } returns Mono.empty()
+        every { mongoTemplateMock.remove(any<Query>(), any<String>()) } returns Mono.empty()
+        every { mongoTemplateMock.remove(any<Query>(), any<String>()) } returns Mono.empty()
 
         // 테스트용 vms 생성
         vms = NaizVms(
@@ -91,7 +101,7 @@ class NaizVmsTest {
                 ip = "naiz.re.kr",
                 port = "8002"
             ),
-            mongoRepo = reactiveMongoRepo
+            vmsSynchronizeService = vmsSynchronizeService
         )
     }
 
@@ -115,24 +125,23 @@ class NaizVmsTest {
                 ip = "naiz.re.kr",
                 port = "8002"
             ),
-            mongoRepo = reactiveMongoRepoMock
+            vmsSynchronizeService = vmsSynchronizeServiceMock
         )
 
         vms.synchronize()
 
         // then: 모킹된 저장소에 메서드가 호출되었는지 확인
-        coVerify(exactly = 1) { reactiveMongoRepoMock.dropDocument("vms_raw_json") }
-        coVerify(exactly = 1) { reactiveMongoRepoMock.dropDocument("vms_camera") }
-        coVerify(exactly = 1) { reactiveMongoRepoMock.dropDocument("vms_camera_keys") }
+        log.info("verifying mock mongo template remove")
+        verify (exactly = 3) { mongoTemplateMock.insert(any<Document>(), any<String>()) }
 
         // 데이터 삽입 메서드 호출 확인
-        coVerify(atLeast = 1) { reactiveMongoRepoMock.insert(any<Document>(), "vms_raw_json") }
-        coVerify(atLeast = 1) { reactiveMongoRepoMock.insert(any<Document>(), "vms_camera") }
-        coVerify(exactly = 1) { reactiveMongoRepoMock.insert(any<Document>(), "vms_camera_keys") }
+        log.info("verifying mock mongo template remove")
+        verify (atLeast = 1) { mongoTemplateMock.remove(any<Query>(), any<String>()) }
 
         // 각 삽입된 문서 내용 검증 (옵션)
         val documentSlot = slot<Document>()
-        coVerify { reactiveMongoRepoMock.insert(capture(documentSlot), eq("vms_raw_json")) }
+        log.info("verifying mock mongo template document")
+        verify { mongoTemplate.insert(capture(documentSlot), eq("vms_raw_json")) }
 
         val capturedDoc = documentSlot.captured
         assertNotNull(capturedDoc)
@@ -289,7 +298,7 @@ class NaizVmsTest {
 
         val jsonElement = vms.extractActualData(gson.toJson(xml)).first()
 
-        val expectedKeys = VmsSynchronizeUtil.extractKeys(jsonElement)
+        val expectedKeys = vmsSynchronizeService.extractKeys(jsonElement)
 
         log.info("required keys: $expectedKeys")
 

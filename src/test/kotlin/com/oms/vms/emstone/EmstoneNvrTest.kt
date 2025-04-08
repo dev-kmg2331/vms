@@ -1,9 +1,10 @@
 package com.oms.vms.emstone
 
 import com.google.gson.JsonObject
+import com.mongodb.reactivestreams.client.MongoDatabase
 import com.oms.logging.gson.gson
 import com.oms.vms.config.VmsConfig
-import com.oms.vms.persistence.mongo.repository.ReactiveMongoRepo
+import com.oms.vms.sync.VmsSynchronizeService
 import kotlinx.coroutines.reactor.awaitSingle
 import kotlinx.coroutines.test.runTest
 import org.bson.Document
@@ -11,7 +12,6 @@ import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.*
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Autowired
-import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.data.mongodb.core.ReactiveMongoTemplate
 import org.springframework.data.mongodb.core.query.Criteria
@@ -35,11 +35,10 @@ class EmstoneNvrTest {
     private lateinit var webClient: WebClient
 
     @Autowired
-    private lateinit var reactiveMongoRepo: ReactiveMongoRepo
-
-    @Autowired
     private lateinit var mongoTemplate: ReactiveMongoTemplate
 
+    @Autowired
+    private lateinit var vmsSynchronizeService: VmsSynchronizeService
 
     private val log = LoggerFactory.getLogger(this::class.java)
 
@@ -61,7 +60,7 @@ class EmstoneNvrTest {
             .defaultHeader(HttpHeaders.AUTHORIZATION, "Basic $authToken")
             .build()
 
-        vms = EmstoneNvr(webClient, vmsConfig, reactiveMongoRepo)
+        vms = EmstoneNvr(webClient, vmsConfig, vmsSynchronizeService)
     }
 
     @AfterEach

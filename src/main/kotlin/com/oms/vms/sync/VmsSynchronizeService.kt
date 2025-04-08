@@ -4,9 +4,12 @@ import com.google.gson.JsonElement
 import com.google.gson.JsonObject
 import com.oms.api.exception.ApiAccessException
 import com.oms.vms.VmsType
-import com.oms.vms.persistence.mongo.repository.ReactiveMongoRepo
+import com.oms.vms.mongo.docs.VMS_CAMERA
+import com.oms.vms.mongo.docs.VMS_CAMERA_KEYS
+import com.oms.vms.mongo.docs.VMS_RAW_JSON
 import format
 import kotlinx.coroutines.reactive.awaitFirstOrNull
+import kotlinx.coroutines.reactor.awaitSingle
 import org.bson.Document
 import org.slf4j.LoggerFactory
 import org.springframework.data.mongodb.core.ReactiveMongoTemplate
@@ -14,6 +17,7 @@ import org.springframework.data.mongodb.core.query.Criteria
 import org.springframework.data.mongodb.core.query.Query
 import org.springframework.http.HttpStatus
 import org.springframework.stereotype.Service
+import reactor.core.publisher.Mono
 import java.time.LocalDateTime
 import java.util.*
 
@@ -33,11 +37,9 @@ class VmsSynchronizeService(
         val doc = Document()
         doc["_id"] = UUID.randomUUID().toString()
         doc["created_at"] = LocalDateTime.now().format()
-        doc["raw-data"] = Document.parse(response)
-        doc["vms"] = Document().apply {
-            this["type"] = vmsType
-            this["uri"] = uri
-        }
+        doc["raw_data"] = Document.parse(response)
+        doc["vms"] = vmsType
+        doc["request_uri"] = uri
         return doc
     }
 
@@ -48,9 +50,7 @@ class VmsSynchronizeService(
         return Document.parse(jsonObj.toString()).apply {
             this["_id"] = UUID.randomUUID().toString()
             this["created_at"] = LocalDateTime.now().format()
-            this["vms"] = Document().apply {
-                this["type"] = vmsType
-            }
+            this["vms"] = vmsType
         }
     }
 
@@ -116,17 +116,26 @@ class VmsSynchronizeService(
         rawResponse: String,
         uri: String,
         vmsType: String,
-        mongoRepo: ReactiveMongoRepo,
         processJsonData: (String) -> List<JsonObject>,
     ) {
+
         // 컬렉션 초기화
-        val rawCollection = "vms_raw_json".apply { mongoRepo.dropDocument(this) }
-        val cameraCollection = "vms_camera".apply { mongoRepo.dropDocument(this) }
-        val keysCollection = "vms_camera_keys".apply { mongoRepo.dropDocument(this) }
+        mongoTemplate.remove(
+            Query.query(Criteria.where("vms").`is`(rawResponse)),
+            VMS_RAW_JSON
+        ).awaitSingle()
+        mongoTemplate.remove(
+            Query.query(Criteria.where("vms").`is`(rawResponse)),
+            "vms_camera"
+        ).awaitSingle()
+        mongoTemplate.remove(
+            Query.query(Criteria.where("vms").`is`(rawResponse)),
+            "vms_camera_keys"
+        ).awaitSingle()
 
         // 원시 응답 저장
         val rawDoc = createRawResponseDocument(rawResponse, uri, vmsType)
-        mongoRepo.insert(rawDoc, rawCollection)
+        mongoTemplate.insert(rawDoc, VMS_RAW_JSON).awaitSingle()
 
         // JSON 데이터 처리
         val jsonObjects = processJsonData(rawResponse)
@@ -139,12 +148,12 @@ class VmsSynchronizeService(
 
                 // 키 목록 저장
                 val keysDoc = createKeysDocument(keys, vmsType)
-                mongoRepo.insert(keysDoc, keysCollection)
+                mongoTemplate.insert(keysDoc, VMS_CAMERA_KEYS).awaitSingle()
             }
 
             // 카메라 JSON 저장
             val cameraDoc = createCameraDocument(json, vmsType)
-            mongoRepo.insert(cameraDoc, cameraCollection)
+            mongoTemplate.insert(cameraDoc, VMS_CAMERA).awaitSingle()
         }
     }
 
@@ -167,6 +176,6 @@ class VmsSynchronizeService(
             Query.query(Criteria.where("vms_type").`is`(vms.serviceName)),
             Document::class.java,
             "vms_camera_keys"
-        ).awaitFirstOrNull() ?: throw ApiAccessException(HttpStatus.BAD_REQUEST, "no keys found for VMS type: {}")
+        ).awaitFirstOrNull() ?: throw ApiAccessException(HttpStatus.BAD_REQUEST, "no keys found for VMS type: $vmsType")
     }
 }

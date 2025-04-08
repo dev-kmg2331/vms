@@ -1,4 +1,4 @@
-package com.oms.vms.persistence.mongo.config
+package com.oms.vms.mongo.config
 
 import com.mongodb.reactivestreams.client.MongoClient
 import org.springframework.context.annotation.Bean

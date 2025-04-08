@@ -5,7 +5,8 @@ spring:
       auto-index-creation: true
       username: oms
       password: oms20190211!
-      database: vms
+#      database: vms
+      database: test
 
 ---
 spring:

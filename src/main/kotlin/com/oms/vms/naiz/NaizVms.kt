@@ -5,7 +5,6 @@ import com.google.gson.reflect.TypeToken
 import com.oms.logging.gson.gson
 import com.oms.vms.DefaultVms
 import com.oms.vms.config.VmsConfig
-import com.oms.vms.persistence.mongo.repository.ReactiveMongoRepo
 import com.oms.vms.sync.VmsSynchronizeService
 import kotlinx.coroutines.reactor.awaitSingle
 import org.json.XML
@@ -18,7 +17,6 @@ class NaizVms(
     @Qualifier("naiz")
     private val webClient: WebClient,
     private val vmsConfig: VmsConfig,
-    private val mongoRepo: ReactiveMongoRepo,
     vmsSynchronizeService: VmsSynchronizeService
 ) : DefaultVms(vmsSynchronizeService) {
     override val type: String = "naiz"
@@ -39,7 +37,6 @@ class NaizVms(
                 rawResponse = gson.toJson(response),
                 uri = uri,
                 vmsType = "naiz",
-                mongoRepo = mongoRepo,
                 processJsonData = ::extractActualData
             )
 

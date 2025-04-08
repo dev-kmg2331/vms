@@ -4,7 +4,6 @@ import com.oms.vms.Vms
 import com.oms.vms.config.VmsConfig
 import com.oms.vms.emstone.EmstoneNvr
 import com.oms.vms.mongo.docs.UnifiedCamera
-import com.oms.vms.persistence.mongo.repository.ReactiveMongoRepo
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.reactive.asFlow
 import kotlinx.coroutines.reactive.awaitSingle
@@ -33,10 +32,10 @@ class EmstoneUnifiedCameraServiceTest {
     private lateinit var mongoTemplate: ReactiveMongoTemplate
 
     @Autowired
-    private lateinit var service: UnifiedCameraService
+    private lateinit var vmsSynchronizeService: VmsSynchronizeService
 
     @Autowired
-    private lateinit var reactiveMongoRepo: ReactiveMongoRepo
+    private lateinit var service: UnifiedCameraService
 
     private lateinit var vms: Vms
 
@@ -60,7 +59,7 @@ class EmstoneUnifiedCameraServiceTest {
             .defaultHeader(HttpHeaders.AUTHORIZATION, "Basic $authToken")
             .build()
 
-        vms = EmstoneNvr(webClient, vmsConfig, reactiveMongoRepo)
+        vms = EmstoneNvr(webClient, vmsConfig, vmsSynchronizeService)
 
         mongoTemplate.remove(
             Query.query(Criteria.where("vmsType").`is`("emstone")),

@@ -6,7 +6,6 @@ import com.oms.vms.DefaultVms
 import com.oms.vms.VmsType
 import com.oms.vms.app.config.DigestAuthenticatorClient
 import com.oms.vms.config.VmsConfig
-import com.oms.vms.persistence.mongo.repository.ReactiveMongoRepo
 import com.oms.vms.sync.VmsSynchronizeService
 import kotlinx.coroutines.reactor.awaitSingle
 import org.springframework.stereotype.Component
@@ -17,7 +16,6 @@ import java.util.regex.Pattern
 class DahuaNvr(
     private val webClient: WebClient,
     private val vmsConfig: VmsConfig,
-    private val reactiveMongoRepo: ReactiveMongoRepo,
     vmsSynchronizeService: VmsSynchronizeService
 ) : DefaultVms(vmsSynchronizeService) {
     private val client: DigestAuthenticatorClient = DigestAuthenticatorClient(webClient, vmsConfig.id, vmsConfig.password)
@@ -44,7 +42,6 @@ class DahuaNvr(
             rawResponse = response,
             uri = uri,
             vmsType = type,
-            mongoRepo = reactiveMongoRepo,
             processJsonData = processJsonData
         )
     }
