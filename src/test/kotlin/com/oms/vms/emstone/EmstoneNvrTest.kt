@@ -1,7 +1,6 @@
 package com.oms.vms.emstone
 
 import com.google.gson.JsonObject
-import com.mongodb.reactivestreams.client.MongoDatabase
 import com.oms.logging.gson.gson
 import com.oms.vms.config.VmsConfig
 import com.oms.vms.sync.VmsSynchronizeService
@@ -80,21 +79,21 @@ class EmstoneNvrTest {
         // then: MongoDB에 저장된 데이터 확인
 
         // 1. vms_raw_json 컬렉션 데이터 확인
-        val rawJsonQuery = Query.query(Criteria.where("vms.type").`is`("emstone"))
+        val rawJsonQuery = Query.query(Criteria.where("vms").`is`("emstone"))
         val rawJsonDoc = mongoTemplate.findOne(rawJsonQuery, Document::class.java, "vms_raw_json").awaitSingle()
 
         assertNotNull(rawJsonDoc, "Raw JSON document should be saved")
         assertEquals(
-            "emstone", rawJsonDoc?.get("vms", Document::class.java)?.get("type"),
+            "emstone", rawJsonDoc?.get("vms", String::class.java),
             "Document should have correct VMS type"
         )
         assertEquals(
-            "/api/cameras", rawJsonDoc?.get("vms", Document::class.java)?.get("uri"),
+            "/api/cameras", rawJsonDoc?.get("request_uri", String::class.java),
             "Document should have correct API URI"
         )
 
         // 2. vms_camera 컬렉션 데이터 확인
-        val cameraQuery = Query.query(Criteria.where("vms.type").`is`("emstone"))
+        val cameraQuery = Query.query(Criteria.where("vms").`is`("emstone"))
         val cameraCount = mongoTemplate.count(cameraQuery, "vms_camera").block() ?: 0
 
         // 카메라 데이터가 있는지 확인
@@ -108,9 +107,9 @@ class EmstoneNvrTest {
             assertNotNull(camera.getString("_id"), "Camera should have ID")
             assertNotNull(camera.getString("created_at"), "Camera should have creation timestamp")
 
-            val vmsDoc = camera.get("vms", Document::class.java)
-            assertNotNull(vmsDoc, "Camera should have VMS information")
-            assertEquals("emstone", vmsDoc?.getString("type"), "Camera should have correct VMS type")
+            val vmsType = camera.get("vms", String::class.java)
+            assertNotNull(vmsType, "Camera should have VMS information")
+            assertEquals("emstone", vmsType, "Camera should have correct VMS type")
 
             // 카메라 데이터가 필요한 필드를 포함하는지 확인 (실제 응답에 따라 수정 필요)
             if (camera.containsKey("id")) {

@@ -104,7 +104,7 @@ class VmsSynchronizeService(
         return Document().apply {
             this["_id"] = UUID.randomUUID().toString()
             this["created_at"] = LocalDateTime.now().format()
-            this["vms_type"] = vmsType
+            this["vms"] = vmsType
             this["keys"] = keys
         }
     }
@@ -121,16 +121,16 @@ class VmsSynchronizeService(
 
         // 컬렉션 초기화
         mongoTemplate.remove(
-            Query.query(Criteria.where("vms").`is`(rawResponse)),
+            Query.query(Criteria.where("vms").`is`(vmsType)),
             VMS_RAW_JSON
         ).awaitSingle()
         mongoTemplate.remove(
-            Query.query(Criteria.where("vms").`is`(rawResponse)),
-            "vms_camera"
+            Query.query(Criteria.where("vms").`is`(vmsType)),
+            VMS_CAMERA
         ).awaitSingle()
         mongoTemplate.remove(
-            Query.query(Criteria.where("vms").`is`(rawResponse)),
-            "vms_camera_keys"
+            Query.query(Criteria.where("vms").`is`(vmsType)),
+            VMS_CAMERA_KEYS
         ).awaitSingle()
 
         // 원시 응답 저장

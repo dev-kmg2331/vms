@@ -106,7 +106,7 @@ class EmstoneUnifiedCameraServiceTest {
                 Query.query(
                     Criteria.where("vms.type").`is`("emstone")
                         .andOperator(
-                            Criteria.where("id").`is`(it.channelIndex)
+                            Criteria.where("id").`is`(it.channelID)
                         )
                 ),
                 Document::class.java,
@@ -120,8 +120,8 @@ class EmstoneUnifiedCameraServiceTest {
             assertNotNull(it.rtspUrl, "RTSP URL should exist")
 
             log.info(
-                "Camera ${it.channelIndex} detailed validation: name=${it.name}, channel=${it.channelName}, " +
-                        "channelIndex=${it.channelIndex}, PTZ=${it.supportsPTZ}, enabled=${it.isEnabled}"
+                "Camera ${it.channelID} detailed validation: name=${it.name}, channel=${it.channelName}, " +
+                        "channelIndex=${it.channelID}, PTZ=${it.supportsPTZ}, enabled=${it.isEnabled}"
             )
         }
     }

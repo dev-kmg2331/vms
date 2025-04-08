@@ -18,12 +18,6 @@ interface Vms {
     suspend fun getRtspURL(id: String): String
 
     fun initialize()
-
-    companion object {
-        const val RAW_JSON = "vms_raw_json"
-        const val CAMERA = "vms_camera"
-        const val CAMERA_KEYS = "vms_camera_keys"
-    }
 }
 
 enum class VmsType(val serviceName: String, val serviceClass: Class<*>) {

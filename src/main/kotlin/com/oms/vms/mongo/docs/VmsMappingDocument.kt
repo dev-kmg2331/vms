@@ -1,6 +1,7 @@
 package com.oms.vms.mongo.docs
 
 import com.fasterxml.jackson.annotation.JsonInclude
+import com.oms.vms.sync.ChannelIdTransFormation
 import com.oms.vms.sync.FieldTransformation
 import format
 import org.springframework.data.annotation.Id
@@ -18,6 +19,7 @@ data class VmsMappingDocument(
     @Id
     val id: String = UUID.randomUUID().toString(),
     val vmsType: String,                       // VMS 유형 (dahua, emstone, naiz 등)
+    val channelIdTransformation: ChannelIdTransFormation? = null,
     val transformations: List<FieldTransformation> = listOf(), // 특수 변환 룰
     val description: String? = null,           // 매핑 설명
     val createdAt: String = LocalDateTime.now().format(),

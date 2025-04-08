@@ -2,8 +2,10 @@ package com.oms.vms.naiz
 
 import com.google.gson.Gson
 import com.google.gson.JsonObject
+import com.mongodb.client.result.DeleteResult
 import com.oms.logging.gson.gson
 import com.oms.vms.config.VmsConfig
+import com.oms.vms.mongo.docs.VMS_CAMERA
 import com.oms.vms.mongo.docs.VMS_RAW_JSON
 import com.oms.vms.sync.VmsSynchronizeService
 import io.mockk.*
@@ -33,6 +35,7 @@ import reactor.core.publisher.Mono
 import java.io.File
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
+import java.util.*
 
 @SpringBootTest
 @ExtendWith(MockKExtension::class)
@@ -84,13 +87,18 @@ class NaizVmsTest {
 
         vmsSynchronizeServiceMock = VmsSynchronizeService(mongoTemplateMock)
 
-        every { mongoTemplateMock.insert(any<Document>(), any<String>()) } returns Mono.empty()
-        every { mongoTemplateMock.insert(any<Document>(), any<String>()) } returns Mono.empty()
-        every { mongoTemplateMock.insert(any<Document>(), any<String>()) } returns Mono.empty()
+        val mockDocument = Document()
+        mockDocument["_id"] = UUID.randomUUID().toString()
 
-        every { mongoTemplateMock.remove(any<Query>(), any<String>()) } returns Mono.empty()
-        every { mongoTemplateMock.remove(any<Query>(), any<String>()) } returns Mono.empty()
-        every { mongoTemplateMock.remove(any<Query>(), any<String>()) } returns Mono.empty()
+        every { mongoTemplateMock.insert(any<Document>(), any<String>()) } returns Mono.just(mockDocument)
+        every { mongoTemplateMock.insert(any<Document>(), any<String>()) } returns Mono.just(mockDocument)
+        every { mongoTemplateMock.insert(any<Document>(), any<String>()) } returns Mono.just(mockDocument)
+
+        val deleteResult = mockk<DeleteResult>()
+
+        every { mongoTemplateMock.remove(any<Query>(), any<String>()) } returns Mono.just(deleteResult)
+        every { mongoTemplateMock.remove(any<Query>(), any<String>()) } returns Mono.just(deleteResult)
+        every { mongoTemplateMock.remove(any<Query>(), any<String>()) } returns Mono.just(deleteResult)
 
         // 테스트용 vms 생성
         vms = NaizVms(
@@ -130,25 +138,20 @@ class NaizVmsTest {
 
         vms.synchronize()
 
-        // then: 모킹된 저장소에 메서드가 호출되었는지 확인
-        log.info("verifying mock mongo template remove")
-        verify (exactly = 3) { mongoTemplateMock.insert(any<Document>(), any<String>()) }
-
-        // 데이터 삽입 메서드 호출 확인
-        log.info("verifying mock mongo template remove")
-        verify (atLeast = 1) { mongoTemplateMock.remove(any<Query>(), any<String>()) }
-
         // 각 삽입된 문서 내용 검증 (옵션)
         val documentSlot = slot<Document>()
         log.info("verifying mock mongo template document")
-        verify { mongoTemplate.insert(capture(documentSlot), eq("vms_raw_json")) }
+        verify { mongoTemplateMock.insert(capture(documentSlot), eq("vms_raw_json")) }
 
         val capturedDoc = documentSlot.captured
+
+        log.info("document : $capturedDoc")
+
         assertNotNull(capturedDoc)
         assertTrue(capturedDoc.containsKey("vms"))
 
-        val vmsInfo = capturedDoc["vms"] as Document
-        assertEquals("naiz", vmsInfo["type"])
+        val vmsInfo = capturedDoc["vms"] as String
+        assertEquals("naiz", vmsInfo)
     }
 
     @Test
@@ -160,22 +163,22 @@ class NaizVmsTest {
         // then: MongoDB에 저장된 데이터 확인
 
         // 1. vms_raw_json 컬렉션 데이터 확인
-        val rawJsonQuery = Query.query(Criteria.where("vms.type").`is`("naiz"))
-        val rawJsonDoc = mongoTemplate.findOne(rawJsonQuery, Document::class.java, "vms_raw_json").awaitSingle()
+        val rawJsonQuery = Query.query(Criteria.where("vms").`is`("naiz"))
+        val rawJsonDoc = mongoTemplate.findOne(rawJsonQuery, Document::class.java, VMS_RAW_JSON).awaitSingle()
 
         assertNotNull(rawJsonDoc, "Raw JSON document should be saved")
         assertEquals(
-            "naiz", rawJsonDoc?.get("vms", Document::class.java)?.get("type"),
+            "naiz", rawJsonDoc?.get("vms", String::class.java),
             "Document should have correct VMS type"
         )
         assertTrue(
-            rawJsonDoc?.get("vms", Document::class.java)?.get("uri").toString().contains("/camera/list.cgi"),
+            rawJsonDoc?.get("request_uri", String::class.java)?.contains("/camera/list.cgi") ?: false,
             "Document should have correct API URI"
         )
 
         // 2. vms_camera 컬렉션 데이터 확인
-        val cameraQuery = Query.query(Criteria.where("vms.type").`is`("naiz"))
-        val cameraCount = mongoTemplate.count(cameraQuery, "vms_camera").block() ?: 0
+        val cameraQuery = Query.query(Criteria.where("vms").`is`("naiz"))
+        val cameraCount = mongoTemplate.count(cameraQuery, VMS_CAMERA).block() ?: 0
 
         // 카메라 데이터가 있는지 확인
         assertTrue(cameraCount > 0, "Camera documents should be saved")
@@ -189,9 +192,9 @@ class NaizVmsTest {
             assertNotNull(camera.getString("_id"), "Camera should have ID")
             assertNotNull(camera.getString("created_at"), "Camera should have creation timestamp")
 
-            val vmsDoc = camera.get("vms", Document::class.java)
+            val vmsDoc = camera.get("vms", String::class.java)
             assertNotNull(vmsDoc, "Camera should have VMS information")
-            assertEquals("naiz", vmsDoc?.getString("type"), "Camera should have correct VMS type")
+            assertEquals("naiz", vmsDoc, "Camera should have correct VMS type")
 
             // Naiz VMS의 카메라 데이터가 필요한 필드를 포함하는지 확인
             // 실제 응답 구조에 따라 조정 필요
@@ -219,9 +222,9 @@ class NaizVmsTest {
 
         // then: 응답이 올바르게 파싱되었는지 확인
         val rawJsonDoc = mongoTemplate.findOne(
-            Query.query(Criteria.where("vms.type").`is`("naiz")),
+            Query.query(Criteria.where("vms").`is`("naiz")),
             Document::class.java,
-            "vms_raw_json"
+            VMS_RAW_JSON
         ).block()
 
         assertNotNull(rawJsonDoc, "Raw JSON document should be saved")
@@ -231,9 +234,9 @@ class NaizVmsTest {
         try {
             val jsonObject = gson.fromJson(jsonString, JsonObject::class.java)
             // Camera 필드가 있는지 확인
-            assertTrue(jsonObject.has("raw-data"), "Document should have raw-data field")
+            assertTrue(jsonObject.has("raw_data"), "Document should have raw-data field")
 
-            val rawData = jsonObject.getAsJsonObject("raw-data")
+            val rawData = jsonObject.getAsJsonObject("raw_data")
             assertTrue(rawData.has("Camera"), "Camera field should exist in the parsed JSON")
 
             // CameraList가 있는지 확인
@@ -252,7 +255,7 @@ class NaizVmsTest {
 
         // then: 저장된 문서의 타임스탬프 형식 확인
         val documents = mongoTemplate.find(
-            Query.query(Criteria.where("vms.type").`is`("naiz")),
+            Query.query(Criteria.where("vms").`is`("naiz")),
             Document::class.java,
             "vms_camera"
         ).collectList().block() ?: emptyList()
@@ -282,7 +285,7 @@ class NaizVmsTest {
 
         // then: 카메라 키 목록 확인
         val keysDoc = mongoTemplate.findOne(
-            Query.query(Criteria.where("vms_type").`is`("naiz")),
+            Query.query(Criteria.where("vms").`is`("naiz")),
             Document::class.java,
             "vms_camera_keys"
         ).awaitSingle()

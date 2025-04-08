@@ -1,23 +1,24 @@
 package com.oms.vms.sync
 
 import com.fasterxml.jackson.databind.ObjectMapper
+import com.oms.api.exception.ApiAccessException
 import com.oms.logging.gson.gson
 import com.oms.vms.emstone.EmstoneNvr
-import com.oms.vms.mongo.docs.SourceReference
-import com.oms.vms.mongo.docs.UnifiedCamera
-import com.oms.vms.mongo.docs.VmsMappingDocument
+import com.oms.vms.mongo.docs.*
 import com.oms.vms.mongo.repo.FieldMappingRepository
 import format
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.reactive.asFlow
 import kotlinx.coroutines.reactive.awaitFirst
 import kotlinx.coroutines.reactive.awaitFirstOrNull
-import kotlinx.coroutines.reactor.awaitSingle
 import org.bson.Document
 import org.slf4j.LoggerFactory
 import org.springframework.data.mongodb.core.ReactiveMongoTemplate
+import org.springframework.data.mongodb.core.find
 import org.springframework.data.mongodb.core.query.Criteria
 import org.springframework.data.mongodb.core.query.Query
+import org.springframework.http.HttpStatus
 import org.springframework.stereotype.Service
 import java.time.LocalDateTime
 import java.util.*
@@ -34,44 +35,46 @@ class UnifiedCameraService(
     private val vms: EmstoneNvr
 ) {
     private val log = LoggerFactory.getLogger(this::class.java)
-    private val unifiedCollection = "vms_camera_unified"
 
     /**
      * 특정 VMS 유형의 모든 카메라 데이터를 통합 구조로 변환하고 저장
      * 동적 매핑 규칙을 사용하며 확장 가능한 방식으로 구현
      */
     suspend fun synchronizeVmsData(vmsType: String) {
-        log.info("$vmsType 유형의 VMS 데이터 동기화 시작")
+        log.info("============ $vmsType VMS synchronize start. ============")
+        // 매핑 규칙 가져오기
+        val mappingRules = mappingRepository.getMappingRules(vmsType)
+
+        mappingRules.channelIdTransformation ?: throw ApiAccessException(
+            HttpStatus.FORBIDDEN,
+            "channel ID transformation rule must be defined first."
+        )
 
         try {
             // 기존 해당 VMS 유형의 통합 데이터 삭제
             mongoTemplate.remove(
-                Query.query(Criteria.where("vmsType").`is`(vmsType)),
-                unifiedCollection
+                Query.query(Criteria.where("vms").`is`(vmsType)),
+                VMS_CAMERA_UNIFIED
             ).awaitFirst()
 
-            // 매핑 규칙 가져오기
-            val mappingRules = mappingRepository.getMappingRules(vmsType)
-
             // VMS 카메라 데이터 가져오기
-            val cameraQuery = Query.query(Criteria.where("vms.type").`is`(vmsType))
+            val cameraQuery = Query.query(Criteria.where("vms").`is`(vmsType))
             val cameras =
-                mongoTemplate.find(cameraQuery, Document::class.java, "vms_camera").collectList().awaitSingle()
+                mongoTemplate.find(cameraQuery, Document::class.java, VMS_CAMERA)
 
-            log.info("$vmsType 유형의 카메라 ${cameras.size}개를 처리합니다.")
-
-            log.info("mapping rules: ${gson.toJson(mappingRules)}")
+            log.info("synchronizing $vmsType VMS. Mapping rule: ${gson.toJson(mappingRules)}.")
 
             // 각 카메라 문서를 통합 구조로 변환하고 저장
-            val saved = cameras.map { vmsCamera ->
-                val unifiedCamera = mapToUnifiedCamera(vmsCamera, mappingRules)
-                mongoTemplate.save(unifiedCamera, unifiedCollection).awaitFirst()
-            }
+            val saved = cameras.asFlow().map { mapToUnifiedCamera(it, mappingRules) }.toList()
 
-            log.info("$vmsType data sync complete. $saved")
+            log.info("$vmsType data sync complete. total size: ${saved.size}")
         } catch (e: Exception) {
-            log.error("$vmsType 데이터 동기화 중 오류 발생: ${e.message}", e)
-            throw e
+            log.error("exception while synchronizing $vmsType VMS data: ${e.message}", e)
+            throw ApiAccessException(
+                HttpStatus.INTERNAL_SERVER_ERROR,
+                e,
+                "unexpected error while synchronizing $vmsType VMS data."
+            )
         }
     }
 
@@ -82,11 +85,37 @@ class UnifiedCameraService(
     private suspend fun mapToUnifiedCamera(
         vmsCamera: Document,
         mappingRules: VmsMappingDocument
-    ): UnifiedCamera {
+    ): Document {
+        val channelID = mappingRules.channelIdTransformation!!.apply.invoke(vmsCamera)
+
+        val duplicate = mongoTemplate.find(
+            Query.query(Criteria.where("channelID").`is`(channelID)),
+            UnifiedCamera::class.java,
+            VMS_CAMERA_UNIFIED
+        ).awaitFirstOrNull()
+
+        // 기존 데이터에대한 업데이트 처리
+        if (duplicate != null) {
+            log.info("updating existing camera $duplicate")
+            val document = Document()
+            mongoTemplate.converter.write(duplicate, document)
+
+            // 변환 적용
+            for (t in mappingRules.transformations) {
+                t.transformationType.apply(vmsCamera, document, t)
+            }
+
+            return mongoTemplate.findAndReplace(
+                Query.query(Criteria.where("_id").`is`(duplicate.id)),
+                document,
+                VMS_CAMERA_UNIFIED
+            ).awaitFirst()
+        }
+
         // 초기 통합 카메라 객체 생성
         val unifiedCamera = UnifiedCamera(
             id = UUID.randomUUID().toString(),
-            vmsType = mappingRules.vmsType,
+            vms = mappingRules.vmsType,
             sourceReference = SourceReference(
                 collectionName = "vms_camera",
                 documentId = vmsCamera.getString("_id")
@@ -94,24 +123,22 @@ class UnifiedCameraService(
             rtspUrl = vms.getRtspURL(vmsCamera.getString("_id"))
         )
 
-        // 통합 카메라 객체를 가변 맵으로 변환
-        val unifiedCameraMap =
-            objectMapper.convertValue(unifiedCamera, Map::class.java).mapKeys { it.key as String }.toMutableMap()
+        val document = Document()
+        mongoTemplate.converter.write(unifiedCamera, document)
 
         // 변환 적용
         for (t in mappingRules.transformations) {
-            t.transformationType.apply(vmsCamera, unifiedCameraMap, t)
+            t.transformationType.apply(vmsCamera, document, t)
         }
 
-        // 맵을 다시 UnifiedCamera 객체로 변환
-        return objectMapper.convertValue(unifiedCameraMap, UnifiedCamera::class.java)
+        return mongoTemplate.save(document, VMS_CAMERA_UNIFIED).awaitFirst()
     }
 
     /**
      * 통합된 모든 카메라 데이터 가져오기
      */
     suspend fun getAllUnifiedCameras(): List<UnifiedCamera> {
-        return mongoTemplate.findAll(UnifiedCamera::class.java, unifiedCollection).asFlow().toList()
+        return mongoTemplate.findAll(UnifiedCamera::class.java, VMS_CAMERA_UNIFIED).asFlow().toList()
     }
 
     /**
@@ -121,7 +148,7 @@ class UnifiedCameraService(
         return mongoTemplate.find(
             Query.query(Criteria.where("vmsType").`is`(vmsType)),
             UnifiedCamera::class.java,
-            unifiedCollection
+            VMS_CAMERA_UNIFIED
         ).asFlow().toList()
     }
 
