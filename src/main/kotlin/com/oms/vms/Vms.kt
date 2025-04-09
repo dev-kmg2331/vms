@@ -2,9 +2,9 @@ package com.oms.vms
 
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.oms.api.exception.ApiAccessException
-import com.oms.vms.dahua.DahuaNvr
-import com.oms.vms.emstone.EmstoneNvr
-import com.oms.vms.naiz.NaizVms
+import com.oms.vms.manufacturers.dahua.DahuaNvr
+import com.oms.vms.manufacturers.emstone.EmstoneNvr
+import com.oms.vms.manufacturers.naiz.NaizVms
 import org.springframework.context.ApplicationContext
 import org.springframework.http.HttpStatus
 import org.springframework.stereotype.Component
@@ -25,8 +25,10 @@ enum class VmsType(val serviceName: String, val serviceClass: Class<*>) {
     // @JsonProperty required for swagger...!
     @JsonProperty("emstone")
     EMSTONE("emstone", EmstoneNvr::class.java),
+
     @JsonProperty("naiz")
     NAIZ("naiz", NaizVms::class.java),
+
     @JsonProperty("dahua")
     DAHUA("dahua", DahuaNvr::class.java);
 
@@ -56,7 +58,10 @@ class VmsFactory(private val applicationContext: ApplicationContext) {
         } catch (e: NoSuchElementException) {
             throw ApiAccessException(HttpStatus.BAD_REQUEST, e)
         } catch (e: Exception) {
-            throw ApiAccessException(HttpStatus.INTERNAL_SERVER_ERROR, "internal error while finding $type VMS service.")
+            throw ApiAccessException(
+                HttpStatus.INTERNAL_SERVER_ERROR,
+                "internal error while finding $type VMS service."
+            )
         }
     }
 

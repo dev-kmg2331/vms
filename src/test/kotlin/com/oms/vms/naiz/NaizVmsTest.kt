@@ -1,16 +1,20 @@
 package com.oms.vms.naiz
 
-import com.google.gson.Gson
 import com.google.gson.JsonObject
 import com.mongodb.client.result.DeleteResult
 import com.oms.logging.gson.gson
-import com.oms.vms.config.VmsConfig
+import com.oms.vms.manufacturers.naiz.NaizVms
 import com.oms.vms.mongo.docs.VMS_CAMERA
+import com.oms.vms.mongo.docs.VMS_CONFIG
 import com.oms.vms.mongo.docs.VMS_RAW_JSON
-import com.oms.vms.sync.VmsSynchronizeService
-import io.mockk.*
+import com.oms.vms.mongo.docs.VmsConfig
+import com.oms.vms.service.VmsSynchronizeService
+import io.mockk.every
 import io.mockk.impl.annotations.MockK
 import io.mockk.junit5.MockKExtension
+import io.mockk.mockk
+import io.mockk.slot
+import io.mockk.verify
 import kotlinx.coroutines.reactor.awaitSingle
 import kotlinx.coroutines.test.runTest
 import org.bson.Document
@@ -31,6 +35,7 @@ import org.springframework.data.mongodb.core.query.Criteria
 import org.springframework.data.mongodb.core.query.Query
 import org.springframework.test.context.ActiveProfiles
 import org.springframework.web.reactive.function.client.WebClient
+import reactor.core.publisher.Flux
 import reactor.core.publisher.Mono
 import java.io.File
 import java.time.LocalDateTime
@@ -59,7 +64,7 @@ class NaizVmsTest {
     private lateinit var vmsSynchronizeServiceMock: VmsSynchronizeService
 
     @MockK
-    private lateinit var webClient: WebClient
+    private lateinit var mockWebClient: WebClient
 
     private val log = LoggerFactory.getLogger(this::class.java)
     private val testResponseFile = "src/test/resources/naiz-test-response.xml"
@@ -76,8 +81,9 @@ class NaizVmsTest {
         getSpec = mockk<WebClient.RequestHeadersUriSpec<*>>()
         responseSpec = mockk<WebClient.ResponseSpec>()
 
-        every { webClient.get() } returns getSpec
+        every { mockWebClient.get() } returns getSpec
         every { getSpec.uri(any<String>()) } returns getSpec
+        every { getSpec.headers(any()) } returns getSpec
         every { getSpec.retrieve() } returns responseSpec
         every { responseSpec.onStatus(any(), any()) } returns responseSpec
 
@@ -86,6 +92,24 @@ class NaizVmsTest {
         every { responseSpec.bodyToMono(String::class.java) } returns Mono.just(rawXMLResponse)
 
         vmsSynchronizeServiceMock = VmsSynchronizeService(mongoTemplateMock)
+
+
+        // vms config mock 조회 설정.
+        every {
+            mongoTemplateMock.find(
+                Query.query(Criteria.where("vms").`is`("naiz")),
+                VmsConfig::class.java,
+                VMS_CONFIG
+            )
+        } returns Flux.just(
+            VmsConfig(
+                username = "admin",
+                password = "admin",
+                ip = "naiz.re.kr",
+                port = "8002",
+                vms = "naiz"
+            )
+        )
 
         val mockDocument = Document()
         mockDocument["_id"] = UUID.randomUUID().toString()
@@ -102,13 +126,7 @@ class NaizVmsTest {
 
         // 테스트용 vms 생성
         vms = NaizVms(
-            webClient = webClient,
-            vmsConfig = VmsConfig(
-                id = "admin",
-                password = "admin",
-                ip = "naiz.re.kr",
-                port = "8002"
-            ),
+            mongoTemplate = mongoTemplate,
             vmsSynchronizeService = vmsSynchronizeService
         )
     }
@@ -125,16 +143,8 @@ class NaizVmsTest {
     @DisplayName("Mock 저장소를 사용한 동기화 테스트")
     fun `synchronize test with mock repository`(): Unit = runTest {
         // when: 모킹된 저장소와 WebClient로 동기화 실행
-        vms = NaizVms(
-            webClient = webClient,
-            vmsConfig = VmsConfig(
-                id = "admin",
-                password = "admin",
-                ip = "naiz.re.kr",
-                port = "8002"
-            ),
-            vmsSynchronizeService = vmsSynchronizeServiceMock
-        )
+        vms = NaizVms(mongoTemplate = mongoTemplateMock, vmsSynchronizeService = vmsSynchronizeServiceMock)
+            .apply { webClient = mockWebClient }
 
         vms.synchronize()
 
@@ -157,6 +167,16 @@ class NaizVmsTest {
     @Test
     @DisplayName("Naiz VMS에서 카메라 데이터를 가져와 MongoDB에 저장하는지 테스트")
     fun `synchronize should fetch camera data from Naiz API and store in MongoDB`(): Unit = runTest {
+        vms.saveVmsConfig(
+            VmsConfig(
+                username = "admin",
+                password = "admin",
+                ip = "naiz.re.kr",
+                port = "8002",
+                vms = "naiz"
+            )
+        )
+
         // when: API 호출 및 동기화 실행
         vms.synchronize()
 

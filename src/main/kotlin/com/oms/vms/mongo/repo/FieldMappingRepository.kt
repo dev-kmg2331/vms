@@ -1,7 +1,7 @@
 package com.oms.vms.mongo.repo
 
 import com.oms.vms.mongo.docs.VMS_FIELD_MAPPINGS
-import com.oms.vms.mongo.docs.VmsMappingDocument
+import com.oms.vms.mongo.docs.FieldMappingDocument
 import format
 import kotlinx.coroutines.reactive.awaitFirst
 import kotlinx.coroutines.reactive.awaitFirstOrNull
@@ -25,10 +25,10 @@ class FieldMappingRepository(
      * 특정 VMS 유형에 대한 현재 매핑 규칙을 가져옴
      * DB에 저장된 규칙이 없으면 기본 매핑 생성
      */
-    suspend fun getMappingRules(vmsType: String): VmsMappingDocument {
+    suspend fun getMappingRules(vmsType: String): FieldMappingDocument {
         return mongoTemplate.findOne(
             Query.query(Criteria.where("vms").`is`(vmsType)),
-            VmsMappingDocument::class.java,
+            FieldMappingDocument::class.java,
             VMS_FIELD_MAPPINGS
         ).awaitFirstOrNull()
             ?: createDefaultMapping(vmsType)
@@ -38,9 +38,9 @@ class FieldMappingRepository(
     /**
      * 새로운 VMS 유형에 대한 기본 매핑 생성
      */
-    suspend fun createDefaultMapping(vmsType: String): VmsMappingDocument {
+    suspend fun createDefaultMapping(vmsType: String): FieldMappingDocument {
         // 새 VMS 유형에 대한 기본 매핑 생성
-        val defaultMapping = VmsMappingDocument(
+        val defaultMapping = FieldMappingDocument(
             vms = vmsType,
             description = "Auto-generated default mapping for $vmsType"
         )
@@ -51,7 +51,7 @@ class FieldMappingRepository(
     /**
      * 매핑 규칙을 업데이트하고 저장
      */
-    suspend fun updateMappingRules(mapping: VmsMappingDocument): VmsMappingDocument {
+    suspend fun updateMappingRules(mapping: FieldMappingDocument): FieldMappingDocument {
         // 업데이트 시간 설정
         val updatedMapping = mapping.copy(updatedAt = LocalDateTime.now().format())
         val query = Query.query(Criteria.where("_id").`is`(updatedMapping.id))
@@ -62,8 +62,8 @@ class FieldMappingRepository(
     /**
      * 모든 VMS 매핑 규칙 가져오기
      */
-    suspend fun getAllMappingRules(): List<VmsMappingDocument> {
-        return mongoTemplate.findAll(VmsMappingDocument::class.java, VMS_FIELD_MAPPINGS)
+    suspend fun getAllMappingRules(): List<FieldMappingDocument> {
+        return mongoTemplate.findAll(FieldMappingDocument::class.java, VMS_FIELD_MAPPINGS)
             .collectList()
             .awaitFirst()
     }
@@ -73,7 +73,7 @@ class FieldMappingRepository(
      */
     suspend fun deleteMappingRules(vmsType: String): Boolean {
         val result = mongoTemplate.remove(
-            Query.query(Criteria.where("vmsType").`is`(vmsType)),
+            Query.query(Criteria.where("vms").`is`(vmsType)),
             VMS_FIELD_MAPPINGS
         ).awaitFirst()
 

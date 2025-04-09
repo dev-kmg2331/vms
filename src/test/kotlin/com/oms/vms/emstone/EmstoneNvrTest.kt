@@ -2,8 +2,9 @@ package com.oms.vms.emstone
 
 import com.google.gson.JsonObject
 import com.oms.logging.gson.gson
-import com.oms.vms.config.VmsConfig
-import com.oms.vms.sync.VmsSynchronizeService
+import com.oms.vms.manufacturers.emstone.EmstoneNvr
+import com.oms.vms.mongo.docs.VmsConfig
+import com.oms.vms.service.VmsSynchronizeService
 import kotlinx.coroutines.reactor.awaitSingle
 import kotlinx.coroutines.test.runTest
 import org.bson.Document
@@ -15,13 +16,10 @@ import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.data.mongodb.core.ReactiveMongoTemplate
 import org.springframework.data.mongodb.core.query.Criteria
 import org.springframework.data.mongodb.core.query.Query
-import org.springframework.http.HttpHeaders
-import org.springframework.http.MediaType
 import org.springframework.test.context.ActiveProfiles
 import org.springframework.web.reactive.function.client.WebClient
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
-import java.util.*
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 
@@ -43,23 +41,7 @@ class EmstoneNvrTest {
 
     @BeforeTest
     fun setup() {
-        vmsConfig = VmsConfig(
-            id = "admin",
-            password = "oms20190211",
-            ip = "192.168.182.200",
-            port = "80"
-        )
-
-        val authToken =
-            Base64.getEncoder().encodeToString("${vmsConfig.id}:${vmsConfig.password}".toByteArray(Charsets.UTF_8))
-
-        webClient = WebClient.builder()
-            .baseUrl("http://${vmsConfig.ip}:${vmsConfig.port}")
-            .defaultHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
-            .defaultHeader(HttpHeaders.AUTHORIZATION, "Basic $authToken")
-            .build()
-
-        vms = EmstoneNvr(webClient, vmsConfig, vmsSynchronizeService)
+        vms = EmstoneNvr(mongoTemplate, vmsSynchronizeService)
     }
 
     @AfterEach
@@ -74,6 +56,16 @@ class EmstoneNvrTest {
     @Test
     fun `synchronize should fetch camera data from Emstone API and store in MongoDB`(): Unit = runTest {
         // when: API 호출 및 동기화 실행
+        vms.saveVmsConfig(
+            VmsConfig(
+                username = "admin",
+                password = "oms20190211",
+                ip = "192.168.182.200",
+                port = "80",
+                vms = "emstone"
+            )
+        )
+
         vms.synchronize()
 
         // then: MongoDB에 저장된 데이터 확인
