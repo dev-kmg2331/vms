@@ -2,7 +2,6 @@ package com.oms.vms.camera
 
 import com.oms.vms.Vms
 import com.oms.vms.camera.service.UnifiedCameraService
-import com.oms.vms.config.VmsConfig
 import com.oms.vms.field_mapping.transformation.ChannelIdTransFormation
 import com.oms.vms.field_mapping.transformation.FieldTransformation
 import com.oms.vms.field_mapping.transformation.TransformationType
@@ -55,10 +54,11 @@ class EmstoneUnifiedCameraServiceTest {
     @BeforeTest
     fun setup() {
         val vmsConfig = VmsConfig(
-            id = "admin",
+            username = "admin",
             password = "oms20190211",
             ip = "192.168.182.200",
-            port = "80"
+            port = "80",
+            vms = "emstone"
         )
 
         val authToken =

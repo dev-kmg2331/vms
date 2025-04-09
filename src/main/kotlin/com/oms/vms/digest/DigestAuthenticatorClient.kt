@@ -1,71 +1,18 @@
-package com.oms.vms.app.config
+package com.oms.vms.digest
 
-import com.oms.vms.config.VmsConfig
-import io.netty.handler.ssl.SslContextBuilder
-import io.netty.handler.ssl.util.InsecureTrustManagerFactory
 import org.slf4j.LoggerFactory
-import org.springframework.beans.factory.annotation.Qualifier
-import org.springframework.context.annotation.Bean
-import org.springframework.context.annotation.Configuration
-import org.springframework.core.env.Environment
 import org.springframework.http.HttpHeaders
 import org.springframework.http.HttpMethod
 import org.springframework.http.HttpStatusCode
-import org.springframework.http.MediaType
-import org.springframework.http.client.reactive.ReactorClientHttpConnector
-import org.springframework.http.codec.ClientCodecConfigurer
 import org.springframework.web.reactive.function.client.*
 import reactor.core.publisher.Mono
-import reactor.netty.http.client.HttpClient
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
 import java.security.NoSuchAlgorithmException
 import java.util.*
-import javax.net.ssl.SSLException
 
-@Configuration
-class VmsWebClientConfig(
-    private val vmsConfig: VmsConfig,
-    private val environment: Environment
-) {
-    private val log = LoggerFactory.getLogger(this::class.java)
 
-    @Bean
-    fun webClient(): WebClient {
-        return WebClient.builder()
-            .defaultHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE + ";charset=UTF-8")
-            .defaultHeader(HttpHeaders.ACCEPT, MediaType.APPLICATION_JSON_VALUE)
-            .build()
-    }
-
-//    @Bean
-//    @Qualifier("realhub")
-//    @ExcludeInTestProfile
-//    fun realhubWebClient(): WebClient {
-//        val serverAddr = environment["api.url.relay"] ?: "localhost:8000"
-//
-//        val webClient = WebClient.builder()
-//            .baseUrl(serverAddr)
-//            .build()
-//
-//        val authKey = webClient
-//            .post()
-//            .uri("/login")
-//            .retrieve()
-//            .bodyToMono(String::class.java)
-//            .onErrorResume(WebClientRequestException::class.java) { e: WebClientRequestException ->
-//                log.error("relay server connection failed! {}", e.localizedMessage)
-//                Mono.just<String>("{\"key\":\"\"}")
-//            }
-//            .doOnSuccess { log.info("realhub login success: $it") }
-//            .map { JSONObject(it).getString("key") }
-//            .block()
-//
-//        return webClient.mutate().defaultHeader("nvr-auth-key", authKey).build()
-//    }
-}
-
-open class DigestAuthenticatorClient(
+class DigestAuthenticatorClient(
     private val webClient: WebClient,
     username: String,
     password: String,
@@ -104,7 +51,9 @@ open class DigestAuthenticatorClient(
                         .retrieve()
                         .onStatus(
                             { obj: HttpStatusCode -> obj.is4xxClientError },
-                            { res -> res.bodyToMono(String::class.java).doOnNext(log::info) .flatMap { res.createException() } }
+                            { res ->
+                                res.bodyToMono(String::class.java).doOnNext(log::info).flatMap { res.createException() }
+                            }
                         )
                         .bodyToMono(String::class.java)
                 }

@@ -4,7 +4,7 @@ import com.google.gson.JsonObject
 import com.oms.logging.gson.gson
 import com.oms.vms.manufacturers.DefaultVms
 import com.oms.vms.VmsType
-import com.oms.vms.app.config.DigestAuthenticatorClient
+import com.oms.vms.digest.DigestAuthenticatorClient
 import com.oms.vms.service.VmsSynchronizeService
 import kotlinx.coroutines.reactor.awaitSingle
 import org.springframework.data.mongodb.core.ReactiveMongoTemplate

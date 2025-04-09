@@ -68,7 +68,7 @@ abstract class DefaultVms protected constructor(
 //        }
 //    }
 
-    open suspend fun getVmsConfig() = mongoTemplate.find(
+    override suspend fun getVmsConfig() = mongoTemplate.find(
         Query.query(Criteria.where("vms").`is`(type)),
         VmsConfig::class.java,
         VMS_CONFIG
@@ -77,7 +77,7 @@ abstract class DefaultVms protected constructor(
         ?.apply { if (!this.isActive) throw ApiAccessException(HttpStatus.BAD_REQUEST, "vms config is not active.") }
         ?: throw ApiAccessException(HttpStatus.BAD_REQUEST, "vms config not found.")
 
-    open suspend fun saveVmsConfig(vmsConfigDoc: VmsConfig): VmsConfig {
+    override suspend fun saveVmsConfig(vmsConfigDoc: VmsConfig): VmsConfig {
         val vmsConfig = mongoTemplate.find(
             Query.query(Criteria.where("vms").`is`(type)),
             VmsConfig::class.java,
@@ -99,6 +99,30 @@ abstract class DefaultVms protected constructor(
         } else {
             mongoTemplate.save(vmsConfigDoc).awaitSingle()
         }
+    }
+
+    /**
+     * VMS 활성화 상태 변경
+     * @param active 활성화 여부
+     * @return 업데이트된 VMS 설정 정보
+     */
+    override suspend fun setVmsConfigActive(active: Boolean): VmsConfig {
+        val vmsConfig = mongoTemplate.find(
+            Query.query(Criteria.where("vms").`is`(type)),
+            VmsConfig::class.java,
+            VMS_CONFIG
+        ).awaitFirstOrNull()
+            ?: throw ApiAccessException(HttpStatus.BAD_REQUEST, "vms config not found.")
+
+        vmsConfig.isActive = active
+        vmsConfig.updatedAt = LocalDateTime.now().format()
+
+        mongoTemplate.findAndReplace(
+            Query.query(Criteria.where("vms").`is`(type)),
+            vmsConfig,
+        ).awaitSingle()
+
+        return vmsConfig
     }
 
     protected suspend fun callVmsApi(uri: String, headers: Consumer<HttpHeaders>? = null): String {

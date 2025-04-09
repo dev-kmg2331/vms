@@ -5,6 +5,7 @@ import com.oms.api.exception.ApiAccessException
 import com.oms.vms.manufacturers.dahua.DahuaNvr
 import com.oms.vms.manufacturers.emstone.EmstoneNvr
 import com.oms.vms.manufacturers.naiz.NaizVms
+import com.oms.vms.mongo.docs.VmsConfig
 import org.springframework.context.ApplicationContext
 import org.springframework.http.HttpStatus
 import org.springframework.stereotype.Component
@@ -19,6 +20,9 @@ interface Vms {
     suspend fun getRtspURL(id: String): String
 
     fun initialize()
+    suspend fun getVmsConfig(): VmsConfig
+    suspend fun saveVmsConfig(vmsConfigDoc: VmsConfig): VmsConfig
+    suspend fun setVmsConfigActive(active: Boolean): VmsConfig
 }
 
 enum class VmsType(val serviceName: String, val serviceClass: Class<*>) {
