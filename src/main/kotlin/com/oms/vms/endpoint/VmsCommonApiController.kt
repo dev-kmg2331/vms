@@ -15,7 +15,6 @@ import io.swagger.v3.oas.annotations.media.Schema
 import io.swagger.v3.oas.annotations.responses.ApiResponse
 import io.swagger.v3.oas.annotations.responses.ApiResponses
 import io.swagger.v3.oas.annotations.tags.Tag
-import jakarta.validation.Valid
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -40,7 +39,7 @@ class VmsCommonApiController(private val vmsFactory: VmsFactory) {
     @GetMapping("/config/{vmsType}")
     @Operation(
         summary = "VMS 설정 정보 조회",
-        description = "지정된 VMS 유형의 설정 정보를 반환합니다. 보안상 비밀번호는 마스킹됩니다."
+        description = "지정된 VMS 유형의 설정 정보를 반환합니다."
     )
     @ApiResponses(
         value = [
@@ -99,7 +98,7 @@ class VmsCommonApiController(private val vmsFactory: VmsFactory) {
                 vmsFactory.getAllServices().map { vms ->
                     async {
                         try {
-                            vms.getVmsConfig()
+                            vms.getVmsConfig(includeInactive = true)
                         } catch (e: ApiAccessException) {
                             // 개별 VMS 설정 조회 실패 시 null 반환하고 계속 진행
                             log.warn("Failed to retrieve configuration for {} VMS: {}", vms.type, e.message)
@@ -116,17 +115,6 @@ class VmsCommonApiController(private val vmsFactory: VmsFactory) {
             ResponseUtil.fail(HttpStatus.INTERNAL_SERVER_ERROR, "Error retrieving VMS configurations")
         }
     }
-
-    /**
-     * VMS 설정 업데이트 요청 DTO
-     */
-    data class VmsConfigUpdateRequest(
-        val username: String,
-        val password: String, // null인 경우 기존 비밀번호 유지
-        val ip: String,
-        val port: String,
-        val additionalInfo: List<VmsAdditionalInfo>
-    )
 
     /**
      * 특정 VMS 유형의 설정 정보 업데이트
@@ -147,7 +135,7 @@ class VmsCommonApiController(private val vmsFactory: VmsFactory) {
             ApiResponse(responseCode = "500", description = "서버 오류")
         ]
     )
-    suspend fun updateVmsConfig(
+    suspend fun saveVmsConfig(
         @Parameter(
             description = "VMS 유형",
             required = true,
@@ -157,25 +145,10 @@ class VmsCommonApiController(private val vmsFactory: VmsFactory) {
         @RequestBody vmsConfigRequest: VmsConfigUpdateRequest
     ): ResponseEntity<*> {
         return try {
-            // 비밀번호가 제공된 경우에만 업데이트
-            if (vmsConfigRequest.password.isBlank()) {
-                throw ApiAccessException(HttpStatus.BAD_REQUEST, "password cannot be blank.")
-            }
-
             val serviceName = VmsType.findByServiceName(vmsType).serviceName
             val vms = vmsFactory.getService(serviceName)
 
-            // 업데이트할 설정 객체 생성
-            val configToUpdate = VmsConfig(
-                username = vmsConfigRequest.username,
-                password = vmsConfigRequest.password,
-                ip = vmsConfigRequest.ip,
-                port = vmsConfigRequest.port,
-                vms = serviceName,
-                additionalInfo = vmsConfigRequest.additionalInfo.toMutableList()
-            )
-
-            val updatedConfig = vms.saveVmsConfig(configToUpdate)
+            val updatedConfig = vms.saveVmsConfig(vmsConfigRequest)
             log.info("Successfully updated configuration for {} VMS", vmsType)
 
             ResponseUtil.success(updatedConfig)
@@ -188,7 +161,7 @@ class VmsCommonApiController(private val vmsFactory: VmsFactory) {
     /**
      * 특정 VMS 유형의 활성화 상태 변경
      */
-    @PatchMapping("/config/{vmsType}/active")
+    @PutMapping("/config/{vmsType}/active")
     @Operation(
         summary = "VMS 활성화 상태 변경",
         description = "지정된 VMS 유형의 활성화 상태를 변경합니다."
@@ -245,3 +218,14 @@ class VmsCommonApiController(private val vmsFactory: VmsFactory) {
         return ResponseUtil.success(services)
     }
 }
+
+/**
+ * VMS 설정 업데이트 요청 DTO
+ */
+data class VmsConfigUpdateRequest(
+    val username: String,
+    val password: String?, // null인 경우 기존 비밀번호 유지
+    val ip: String,
+    val port: String,
+    val additionalInfo: List<VmsAdditionalInfo>
+)

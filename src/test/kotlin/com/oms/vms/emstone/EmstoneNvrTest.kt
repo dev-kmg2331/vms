@@ -2,6 +2,7 @@ package com.oms.vms.emstone
 
 import com.google.gson.JsonObject
 import com.oms.logging.gson.gson
+import com.oms.vms.endpoint.VmsConfigUpdateRequest
 import com.oms.vms.manufacturers.emstone.EmstoneNvr
 import com.oms.vms.mongo.docs.VmsConfig
 import com.oms.vms.service.VmsSynchronizeService
@@ -57,12 +58,12 @@ class EmstoneNvrTest {
     fun `synchronize should fetch camera data from Emstone API and store in MongoDB`(): Unit = runTest {
         // when: API 호출 및 동기화 실행
         vms.saveVmsConfig(
-            VmsConfig(
+            VmsConfigUpdateRequest(
                 username = "admin",
                 password = "oms20190211",
                 ip = "192.168.182.200",
                 port = "80",
-                vms = "emstone"
+                additionalInfo = listOf()
             )
         )
 

@@ -2,6 +2,8 @@ package com.oms.vms.manufacturers
 
 import com.oms.api.exception.ApiAccessException
 import com.oms.vms.Vms
+import com.oms.vms.endpoint.VmsCommonApiController
+import com.oms.vms.endpoint.VmsConfigUpdateRequest
 import com.oms.vms.mongo.docs.VMS_CONFIG
 import com.oms.vms.mongo.docs.VmsConfig
 import com.oms.vms.service.VmsSynchronizeService
@@ -68,16 +70,19 @@ abstract class DefaultVms protected constructor(
 //        }
 //    }
 
-    override suspend fun getVmsConfig() = mongoTemplate.find(
-        Query.query(Criteria.where("vms").`is`(type)),
-        VmsConfig::class.java,
-        VMS_CONFIG
-    )
-        .awaitFirstOrNull()
-        ?.apply { if (!this.isActive) throw ApiAccessException(HttpStatus.BAD_REQUEST, "vms config is not active.") }
-        ?: throw ApiAccessException(HttpStatus.BAD_REQUEST, "vms config not found.")
+    override suspend fun getVmsConfig(includeInactive: Boolean): VmsConfig {
+        val await = mongoTemplate.find(
+            Query.query(Criteria.where("vms").`is`(type)),
+            VmsConfig::class.java,
+            VMS_CONFIG
+        ).awaitFirstOrNull() ?: throw ApiAccessException(HttpStatus.BAD_REQUEST, "vms config not found.")
 
-    override suspend fun saveVmsConfig(vmsConfigDoc: VmsConfig): VmsConfig {
+        if (!includeInactive) await.apply { if (!this.isActive) throw ApiAccessException(HttpStatus.BAD_REQUEST, "vms config is not active.") }
+
+        return await
+    }
+
+    override suspend fun saveVmsConfig(vmsConfigRequest: VmsConfigUpdateRequest): VmsConfig {
         val vmsConfig = mongoTemplate.find(
             Query.query(Criteria.where("vms").`is`(type)),
             VmsConfig::class.java,
@@ -85,19 +90,30 @@ abstract class DefaultVms protected constructor(
         ).awaitFirstOrNull()
 
         return if (vmsConfig != null) {
-            vmsConfig.username = vmsConfigDoc.username
-            vmsConfig.password = vmsConfigDoc.password
-            vmsConfig.ip = vmsConfigDoc.ip
-            vmsConfig.port = vmsConfigDoc.port
+            vmsConfig.username = vmsConfigRequest.username
+            vmsConfig.password = vmsConfigRequest.password ?: vmsConfig.password
+            vmsConfig.ip = vmsConfigRequest.ip
+            vmsConfig.port = vmsConfigRequest.port
             vmsConfig.updatedAt = LocalDateTime.now().format()
-            vmsConfig.additionalInfo = vmsConfigDoc.additionalInfo
+            vmsConfig.additionalInfo = vmsConfigRequest.additionalInfo.toMutableList()
 
             mongoTemplate.findAndReplace(
                 Query.query(Criteria.where("vms").`is`(type)),
                 vmsConfig,
             ).awaitSingle()
         } else {
-            mongoTemplate.save(vmsConfigDoc).awaitSingle()
+            val password = vmsConfigRequest.password ?: throw ApiAccessException(HttpStatus.BAD_REQUEST, "password is cannot be empty.")
+
+            // 업데이트할 설정 객체 생성
+            val newConfig = VmsConfig(
+                username = vmsConfigRequest.username,
+                password = password,
+                ip = vmsConfigRequest.ip,
+                port = vmsConfigRequest.port,
+                vms = type,
+                additionalInfo = vmsConfigRequest.additionalInfo.toMutableList()
+            )
+            mongoTemplate.save(newConfig).awaitSingle()
         }
     }
 

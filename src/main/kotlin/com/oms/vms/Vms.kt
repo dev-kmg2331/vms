@@ -2,6 +2,7 @@ package com.oms.vms
 
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.oms.api.exception.ApiAccessException
+import com.oms.vms.endpoint.VmsConfigUpdateRequest
 import com.oms.vms.manufacturers.dahua.DahuaNvr
 import com.oms.vms.manufacturers.emstone.EmstoneNvr
 import com.oms.vms.manufacturers.naiz.NaizVms
@@ -20,8 +21,9 @@ interface Vms {
     suspend fun getRtspURL(id: String): String
 
     fun initialize()
-    suspend fun getVmsConfig(): VmsConfig
-    suspend fun saveVmsConfig(vmsConfigDoc: VmsConfig): VmsConfig
+
+    suspend fun getVmsConfig(includeInactive: Boolean = false): VmsConfig
+    suspend fun saveVmsConfig(vmsConfigRequest: VmsConfigUpdateRequest): VmsConfig
     suspend fun setVmsConfigActive(active: Boolean): VmsConfig
 }
 
