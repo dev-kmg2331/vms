@@ -1,6 +1,7 @@
 package com.oms.vms.manufacturers.naiz
 
 import com.google.gson.JsonObject
+import com.google.gson.JsonParser
 import com.google.gson.reflect.TypeToken
 import com.oms.api.exception.ApiAccessException
 import com.oms.logging.gson.gson
@@ -17,6 +18,7 @@ import org.springframework.stereotype.Component
 import org.springframework.web.reactive.function.client.ExchangeStrategies
 import org.springframework.web.reactive.function.client.WebClient
 import reactor.netty.http.client.HttpClient
+import java.nio.charset.StandardCharsets
 
 @Component(value = "naiz")
 class NaizVms(
@@ -79,14 +81,20 @@ class NaizVms(
             HttpStatus.INTERNAL_SERVER_ERROR,
             "key Camera not found in response data. response: $it"
         )
+
         val cameraList = camera.getAsJsonObject("CameraList") ?: throw ApiAccessException(
             HttpStatus.INTERNAL_SERVER_ERROR,
             "key CameraList not found in response data. response: $it"
         )
+
         val cameraListItem = cameraList.getAsJsonArray("CameraListItem") ?: throw ApiAccessException(
             HttpStatus.INTERNAL_SERVER_ERROR,
             "key CameraListItem not found in response data. response: $it"
         )
-        return cameraListItem.map { o -> o.asJsonObject }
+
+        return cameraListItem.map { o ->
+            val str = String(o.toString().toByteArray(), StandardCharsets.UTF_8)
+            JsonParser.parseString(str).asJsonObject
+        }
     }
 }

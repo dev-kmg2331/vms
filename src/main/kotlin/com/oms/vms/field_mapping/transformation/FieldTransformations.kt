@@ -19,16 +19,42 @@ interface Transformation {
  * 필드에 적용할 특수 변환 로직을 정의
  */
 data class FieldTransformation(
-    override val sourceField: String,
+    override var sourceField: String,
     val targetField: String,
     val transformationType: TransformationType, // 변환 유형
     val parameters: Map<String, String> = mapOf() // 변환에 필요한 추가 매개변수
-) : Transformation
+) : Transformation {
+    fun sourceIsDocument(): Boolean = sourceField.contains("-")
+
+    fun sourceIsList(): Boolean = sourceField.contains("[0]")
+
+    fun getSourceDocument(sourceDoc: Document): Document {
+        var doc = sourceDoc
+
+        var fields = sourceField.split("-")
+        val lastField = fields.last()
+        fields = fields.subList(0, fields.size - 2)
+
+        for (field in fields) {
+            doc = sourceDoc.get(field, Document::class.java) ?: throw ApiAccessException(
+                HttpStatus.BAD_REQUEST,
+                "error while parsing source object. field : $sourceField"
+            )
+        }
+
+        this.sourceField = lastField
+
+        return doc
+    }
+
+    fun getSourceListDocument(sourceDoc: Document): Document {
+        val field = sourceField.split("[0]]").first()
+        return sourceDoc.getList(field, List::class.java)[0] as Document
+    }
+}
 
 data class ChannelIdTransFormation(
     override val sourceField: String,
-    @JsonIgnore
-    val apply: (Document) -> String = { doc: Document -> doc[sourceField]!!.toString() }
 ) : Transformation
 
 /**

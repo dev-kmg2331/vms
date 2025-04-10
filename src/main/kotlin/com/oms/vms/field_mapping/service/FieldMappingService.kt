@@ -1,11 +1,13 @@
 package com.oms.vms.field_mapping.service
 
 import com.oms.api.exception.ApiAccessException
+import com.oms.vms.field_mapping.endpoint.ChannelIDTransformationRequest
 import com.oms.vms.field_mapping.transformation.FieldTransformation
 import com.oms.vms.field_mapping.transformation.TransformationType
 import com.oms.vms.mongo.docs.FieldMappingDocument
 import com.oms.vms.mongo.repo.FieldMappingRepository
 import com.oms.vms.field_mapping.endpoint.TransformationRequest
+import com.oms.vms.field_mapping.transformation.ChannelIdTransFormation
 import format
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
@@ -52,16 +54,29 @@ class FieldMappingService(
             parameters = transformationRequest.parameters
         )
 
-        log.info("$vmsType VSM type mapping rules added: ${transformation.sourceField} -> ${transformation.targetField} [${transformation.transformationType}]")
+        log.info("$vmsType VMS mapping rules added: ${transformation.sourceField} -> ${transformation.targetField} [${transformation.transformationType}]")
 
         val mappingRules = fieldMappingRepository.getMappingRules(vmsType)
-        val updatedTransformations = mappingRules.transformations.toMutableList()
-        updatedTransformations.add(transformation)
+        mappingRules.transformations.add(transformation)
+
+        return fieldMappingRepository.updateMappingRules(mappingRules)
+    }
+
+    /**
+     * channel ID 변환 규칙 추가
+     */
+    suspend fun addChannelIDTransformation(
+        vmsType: String,
+        request: ChannelIDTransformationRequest,
+    ): FieldMappingDocument {
+        val mappingRules = fieldMappingRepository.getMappingRules(vmsType)
+        mappingRules.channelIdTransformation = ChannelIdTransFormation(sourceField = request.sourceField)
 
         val updatedRule = mappingRules.copy(
-            transformations = updatedTransformations,
             updatedAt = LocalDateTime.now().format()
         )
+
+        log.info("$vmsType VMS channel ID mapping rule added. source field: ${request.sourceField}.")
 
         return fieldMappingRepository.updateMappingRules(updatedRule)
     }

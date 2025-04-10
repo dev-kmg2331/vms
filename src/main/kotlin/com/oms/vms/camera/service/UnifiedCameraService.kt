@@ -1,10 +1,9 @@
 package com.oms.vms.camera.service
 
-import com.fasterxml.jackson.databind.ObjectMapper
 import com.oms.api.exception.ApiAccessException
 import com.oms.logging.gson.gson
+import com.oms.vms.VmsFactory
 import com.oms.vms.field_mapping.transformation.FieldTransformation
-import com.oms.vms.manufacturers.emstone.EmstoneNvr
 import com.oms.vms.mongo.docs.*
 import com.oms.vms.mongo.repo.FieldMappingRepository
 import format
@@ -37,8 +36,7 @@ import java.util.*
 class UnifiedCameraService(
     private val mongoTemplate: ReactiveMongoTemplate,
     private val mappingRepository: FieldMappingRepository,
-    private val objectMapper: ObjectMapper,
-    private val vms: EmstoneNvr
+    private val vmsFactory: VmsFactory,
 ) {
     private val log = LoggerFactory.getLogger(UnifiedCameraService::class.java)
 
@@ -105,11 +103,16 @@ class UnifiedCameraService(
         vmsCamera: Document,
         mappingRules: FieldMappingDocument
     ): UnifiedCamera {
-        // 정의된 변환을 사용하여 채널 ID 추출
-        val channelID = mappingRules.channelIdTransformation!!.apply.invoke(vmsCamera)
+        // 채널 ID 추출
+        val sourceField = mappingRules.channelIdTransformation!!.sourceField
+        val channelID = vmsCamera[sourceField]?.toString() ?: throw ApiAccessException(
+            HttpStatus.BAD_REQUEST,
+            "Channel ID transformation rule source field error. Unknown field: $sourceField"
+        )
+        val vmsType = mappingRules.vms
 
         // 동일한 채널 ID를 가진 기존 카메라 확인
-        val existingCamera = findExistingCamera(channelID)
+        val existingCamera = findExistingCamera(channelID, vmsType)
 
         // 기존 카메라 업데이트 처리
         if (existingCamera != null) {
@@ -126,9 +129,14 @@ class UnifiedCameraService(
      * @param channelID 검색할 채널 ID
      * @return 기존 카메라 문서, 또는 찾지 못한 경우 null
      */
-    private suspend fun findExistingCamera(channelID: String): UnifiedCamera? {
+    private suspend fun findExistingCamera(channelID: String, vmsType: String): UnifiedCamera? {
         return mongoTemplate.find(
-            Query.query(Criteria.where("channel_ID").`is`(channelID)),
+            Query.query(
+                Criteria.where("vms")
+                    .`is`(vmsType)
+                    .and("channel_ID")
+                    .`is`(channelID)
+            ),
             UnifiedCamera::class.java,
             VMS_CAMERA_UNIFIED
         ).awaitFirstOrNull()
@@ -180,6 +188,8 @@ class UnifiedCameraService(
     ): UnifiedCamera {
         log.info("Creating new unified camera for channel ID: {}", channelID)
 
+        val vms = vmsFactory.getService(mappingRules.vms)
+
         // 초기 통합 카메라 객체 생성
         val unifiedCamera = UnifiedCamera(
             id = UUID.randomUUID().toString(),
@@ -221,7 +231,8 @@ class UnifiedCameraService(
     ) {
         for (transformation in transformations) {
             try {
-                transformation.transformationType.apply(sourceDoc, targetDoc, transformation)
+                val doc: Document = getTransformationSource(transformation, sourceDoc)
+                transformation.transformationType.apply(doc, targetDoc, transformation)
             } catch (e: Exception) {
                 log.warn(
                     "Failed to apply transformation from '{}' to '{}': {}",
@@ -230,6 +241,16 @@ class UnifiedCameraService(
                     e.message
                 )
             }
+        }
+    }
+
+    private fun getTransformationSource(transformation: FieldTransformation, sourceDoc: Document): Document {
+        return if (transformation.sourceIsDocument()) {
+            transformation.getSourceDocument(sourceDoc)
+        } else if (transformation.sourceIsList()) {
+            transformation.getSourceListDocument(sourceDoc)
+        } else {
+            sourceDoc
         }
     }
 

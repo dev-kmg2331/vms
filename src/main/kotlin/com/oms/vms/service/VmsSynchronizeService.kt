@@ -3,10 +3,7 @@ package com.oms.vms.service
 import com.google.gson.JsonElement
 import com.google.gson.JsonObject
 import com.oms.api.exception.ApiAccessException
-import com.oms.vms.mongo.docs.VMS_CAMERA
-import com.oms.vms.mongo.docs.VMS_CAMERA_KEYS
-import com.oms.vms.mongo.docs.VMS_FIELD_ANALYSIS
-import com.oms.vms.mongo.docs.VMS_RAW_JSON
+import com.oms.vms.mongo.docs.*
 import format
 import kotlinx.coroutines.reactive.awaitFirstOrNull
 import kotlinx.coroutines.reactor.awaitSingle
@@ -145,6 +142,36 @@ class VmsSynchronizeService(
             val cameraDoc = createCameraDocument(json, vmsType)
             mongoTemplate.insert(cameraDoc, VMS_CAMERA).awaitSingle()
         }
+    }
+
+    /**
+     * UnifiedCamera 의 필드 구조를 분석하고 저장합니다
+     * @return UnifiedCamera 의 필드 구조 분석 Document
+     */
+    suspend fun analyzeUnifiedFieldStructure(): Document {
+        val emptyUnifiedCamera = UnifiedCamera(
+            vms = "",
+            rtspUrl = "",
+            sourceReference = SourceReference(
+                collectionName = "",
+                documentId = ""
+            ),
+            createdAt = LocalDateTime.now().format(),
+            updatedAt = LocalDateTime.now().format()
+        )
+
+        val document = Document()
+
+        mongoTemplate.converter.write(emptyUnifiedCamera, document)
+
+        val structure = analyzeDocumentStructure(document)
+
+        val responseDoc = Document()
+
+        responseDoc["analyzed_at"] = LocalDateTime.now().format()
+        responseDoc["fields"] = structure
+
+        return responseDoc
     }
 
 

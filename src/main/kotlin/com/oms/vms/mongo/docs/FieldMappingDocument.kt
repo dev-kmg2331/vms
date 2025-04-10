@@ -20,7 +20,7 @@ data class FieldMappingDocument(
     val id: String = UUID.randomUUID().toString(),
     val vms: String,                       // VMS 유형 (dahua, emstone, naiz 등)
     var channelIdTransformation: ChannelIdTransFormation? = null,
-    val transformations: List<FieldTransformation> = listOf(), // 특수 변환 룰
+    val transformations: MutableList<FieldTransformation> = mutableListOf(), // 특수 변환 룰
     val description: String? = null,           // 매핑 설명
     val createdAt: String = LocalDateTime.now().format(),
     val updatedAt: String = LocalDateTime.now().format()

@@ -6,6 +6,7 @@ import com.oms.vms.mongo.docs.FieldMappingDocument
 import com.oms.vms.field_mapping.service.FieldMappingService
 import com.oms.vms.field_mapping.transformation.FieldTransformation
 import com.oms.vms.field_mapping.transformation.TransformationType
+import com.oms.vms.mongo.config.asResponse
 import com.oms.vms.service.VmsSynchronizeService
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.Parameter
@@ -47,7 +48,10 @@ class FieldMappingController(
             ApiResponse(
                 responseCode = "200",
                 description = "매핑 규칙 조회 성공",
-                content = [Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = Schema(implementation = FieldMappingDocument::class))]
+                content = [Content(
+                    mediaType = MediaType.APPLICATION_JSON_VALUE,
+                    schema = Schema(implementation = FieldMappingDocument::class)
+                )]
             ),
             ApiResponse(responseCode = "500", description = "서버 오류")
         ]
@@ -115,7 +119,10 @@ class FieldMappingController(
             ApiResponse(
                 responseCode = "200",
                 description = "변환 규칙 추가 성공",
-                content = [Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = Schema(implementation = FieldMappingDocument::class))]
+                content = [Content(
+                    mediaType = MediaType.APPLICATION_JSON_VALUE,
+                    schema = Schema(implementation = FieldMappingDocument::class)
+                )]
             ),
             ApiResponse(responseCode = "500", description = "서버 오류")
         ]
@@ -132,8 +139,50 @@ class FieldMappingController(
     ): ResponseEntity<*> {
         return try {
             val updatedRule = fieldMappingService.addTransformation(vmsType, transformationRequest)
-            log.info("Successfully added transformation rule for {} VMS type: {} -> {}",
-                vmsType, transformationRequest.sourceField, transformationRequest.targetField)
+            log.info(
+                "Successfully added transformation rule for {} VMS type: {} -> {}",
+                vmsType, transformationRequest.sourceField, transformationRequest.targetField
+            )
+            ResponseUtil.success(updatedRule)
+        } catch (e: Exception) {
+            log.error("Error in adding {} VMS type mapping rule: {}", vmsType, e.message, e)
+            ResponseUtil.fail(HttpStatus.INTERNAL_SERVER_ERROR, "error in adding $vmsType VMS type mapping rule")
+        }
+    }
+
+    /**
+     * Channel ID 변환 규칙 추가. (PK 변환 규칙 추가)
+     */
+    @PostMapping("/{vmsType}/id-transformation")
+    @Operation(
+        summary = "필드 변환 규칙 추가",
+        description = "지정된 VMS 유형에 대한 새로운 필드 변환 규칙을 추가합니다."
+    )
+    @ApiResponses(
+        value = [
+            ApiResponse(
+                responseCode = "200",
+                description = "변환 규칙 추가 성공",
+                content = [Content(
+                    mediaType = MediaType.APPLICATION_JSON_VALUE,
+                    schema = Schema(implementation = FieldMappingDocument::class)
+                )]
+            ),
+            ApiResponse(responseCode = "500", description = "서버 오류")
+        ]
+    )
+    suspend fun addChannelIDTransformation(
+        @Parameter(
+            description = "VMS 유형",
+            required = true,
+            schema = Schema(type = "string", implementation = VmsType::class)
+        )
+        @PathVariable vmsType: String,
+        @Parameter(description = "추가할 변환 규칙 정보", required = true)
+        @RequestBody transformationRequest: ChannelIDTransformationRequest
+    ): ResponseEntity<*> {
+        return try {
+            val updatedRule = fieldMappingService.addChannelIDTransformation(vmsType, transformationRequest)
             ResponseUtil.success(updatedRule)
         } catch (e: Exception) {
             log.error("Error in adding {} VMS type mapping rule: {}", vmsType, e.message, e)
@@ -154,7 +203,10 @@ class FieldMappingController(
             ApiResponse(
                 responseCode = "200",
                 description = "변환 규칙 삭제 성공",
-                content = [Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = Schema(implementation = FieldMappingDocument::class))]
+                content = [Content(
+                    mediaType = MediaType.APPLICATION_JSON_VALUE,
+                    schema = Schema(implementation = FieldMappingDocument::class)
+                )]
             ),
             ApiResponse(responseCode = "400", description = "잘못된 인덱스"),
             ApiResponse(responseCode = "500", description = "서버 오류")
@@ -271,7 +323,10 @@ class FieldMappingController(
             ApiResponse(
                 responseCode = "200",
                 description = "매핑 규칙 초기화 성공",
-                content = [Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = Schema(implementation = FieldMappingDocument::class))]
+                content = [Content(
+                    mediaType = MediaType.APPLICATION_JSON_VALUE,
+                    schema = Schema(implementation = FieldMappingDocument::class)
+                )]
             ),
             ApiResponse(responseCode = "500", description = "서버 오류")
         ]
@@ -291,38 +346,6 @@ class FieldMappingController(
         } catch (e: Exception) {
             log.error("Error in resetting {} VMS type mapping rules: {}", vmsType, e.message, e)
             ResponseUtil.fail(HttpStatus.INTERNAL_SERVER_ERROR, "error in resetting $vmsType VMS type mapping rule")
-        }
-    }
-
-    /**
-     * 모든 VMS 유형 조회
-     */
-    @GetMapping("/vms-types")
-    @Operation(
-        summary = "지원되는 모든 VMS 유형 조회",
-        description = "시스템에서 지원하는 모든 VMS 유형 목록을 반환합니다."
-    )
-    @ApiResponses(
-        value = [
-            ApiResponse(
-                responseCode = "200",
-                description = "VMS 유형 목록 조회 성공",
-                content = [Content(
-                    mediaType = MediaType.APPLICATION_JSON_VALUE,
-                    array = ArraySchema(schema = Schema(implementation = String::class))
-                )]
-            ),
-            ApiResponse(responseCode = "500", description = "서버 오류")
-        ]
-    )
-    suspend fun getAllVmsTypes(): ResponseEntity<*> {
-        return try {
-            val vmsTypes = VmsType.entries.map { it.serviceName }
-            log.info("Successfully retrieved all supported VMS types")
-            ResponseUtil.success(vmsTypes)
-        } catch (e: Exception) {
-            log.error("Error in finding all VMS types: {}", e.message, e)
-            ResponseUtil.fail(HttpStatus.INTERNAL_SERVER_ERROR, "error in finding all VMS types")
         }
     }
 
@@ -350,13 +373,36 @@ class FieldMappingController(
         @PathVariable vmsType: String
     ): ResponseEntity<*> {
         return try {
-            return vmsSynchronizeService.analyzeVmsFieldStructure(vmsType).let { ResponseUtil.success(it) }
+            return vmsSynchronizeService.analyzeVmsFieldStructure(vmsType).let { ResponseUtil.success(it.asResponse()) }
         } catch (e: Exception) {
             log.error("Error analyzing field structure for {} VMS type: {}", vmsType, e.message, e)
             ResponseUtil.fail(HttpStatus.INTERNAL_SERVER_ERROR, "unknown error in analyzing field structure")
         }
     }
 
+    /**
+     * UnifiedCamera 의 필드 구조 분석
+     */
+    @GetMapping("/analyze")
+    @Operation(
+        summary = "통합 카메라 필드 구조 분석",
+        description = "지정된 VMS 유형의 카메라 데이터 필드 구조를 분석합니다."
+    )
+    @ApiResponses(
+        value = [
+            ApiResponse(responseCode = "200", description = "필드 구조 분석 성공"),
+            ApiResponse(responseCode = "400", description = "필드 구조 분석 실패 - 잘못된 요청"),
+            ApiResponse(responseCode = "500", description = "필드 구조 분석 중 서버 오류")
+        ]
+    )
+    suspend fun analyzeUnifiedFieldStructure(): ResponseEntity<*> {
+        return try {
+            return vmsSynchronizeService.analyzeUnifiedFieldStructure().let { ResponseUtil.success(it.asResponse()) }
+        } catch (e: Exception) {
+            log.error("Error analyzing field structure for unified camera.", e)
+            ResponseUtil.fail(HttpStatus.INTERNAL_SERVER_ERROR, "unknown error in analyzing field structure")
+        }
+    }
 }
 
 /**
@@ -370,10 +416,20 @@ data class TransformationRequest(
     @Schema(description = "대상 필드 이름", example = "camera_name")
     val targetField: String,
 
-    @Schema(description = "변환 유형", example = "DEFAULT_CONVERSION",
-        allowableValues = ["DEFAULT_CONVERSION", "BOOLEAN_CONVERSION", "NUMBER_CONVERSION", "STRING_FORMAT", "DATE_FORMAT"])
+    @Schema(
+        description = "변환 유형", example = "DEFAULT_CONVERSION",
+        allowableValues = ["DEFAULT_CONVERSION", "BOOLEAN_CONVERSION", "NUMBER_CONVERSION", "STRING_FORMAT", "DATE_FORMAT"]
+    )
     val transformationType: TransformationType,
 
     @Schema(description = "추가 매개변수 (변환 유형에 따라 필요한 경우)", example = "{\"format\": \"%s\"}")
     val parameters: Map<String, String> = mapOf()
+)
+
+/**
+ * Channel ID 변환 규칙 요청을 위한 데이터 클래스
+ */
+@Schema(description = "Channel ID (PK) 변환 규칙 요청 정보")
+data class ChannelIDTransformationRequest(
+    val sourceField: String,
 )
