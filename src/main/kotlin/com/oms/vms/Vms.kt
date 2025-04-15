@@ -5,6 +5,8 @@ import com.oms.api.exception.ApiAccessException
 import com.oms.vms.endpoint.VmsConfigUpdateRequest
 import com.oms.vms.manufacturers.dahua.DahuaNvr
 import com.oms.vms.manufacturers.emstone.EmstoneNvr
+import com.oms.vms.manufacturers.hanwha.HanwhaVisionNvr
+import com.oms.vms.manufacturers.innodep.VurixVms
 import com.oms.vms.manufacturers.naiz.NaizVms
 import com.oms.vms.mongo.docs.VmsConfig
 import org.springframework.context.ApplicationContext
@@ -22,7 +24,7 @@ interface Vms {
 
     fun initialize()
 
-    suspend fun getVmsConfig(includeInactive: Boolean = false): VmsConfig
+    fun getVmsConfig(includeInactive: Boolean = false): VmsConfig
     suspend fun saveVmsConfig(vmsConfigRequest: VmsConfigUpdateRequest): VmsConfig
     suspend fun setVmsConfigActive(active: Boolean): VmsConfig
 }
@@ -35,8 +37,14 @@ enum class VmsType(val serviceName: String, val serviceClass: Class<*>) {
     @JsonProperty("naiz")
     NAIZ("naiz", NaizVms::class.java),
 
+    @JsonProperty("vurix")
+    VURIX("vurix", VurixVms::class.java),
+
     @JsonProperty("dahua")
-    DAHUA("dahua", DahuaNvr::class.java);
+    DAHUA("dahua", DahuaNvr::class.java),
+
+    @JsonProperty("hanwha")
+    HANWHA_VISION("hanwha", HanwhaVisionNvr::class.java);
 
     companion object {
         fun findByServiceName(serviceName: String): VmsType {

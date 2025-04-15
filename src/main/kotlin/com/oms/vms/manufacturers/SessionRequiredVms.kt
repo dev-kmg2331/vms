@@ -3,7 +3,6 @@ package com.oms.vms.manufacturers
 import com.oms.vms.Vms
 import com.oms.vms.service.VmsSynchronizeService
 import org.springframework.beans.factory.InitializingBean
-import org.springframework.core.env.Environment
 import org.springframework.data.mongodb.core.ReactiveMongoTemplate
 import org.springframework.http.HttpHeaders
 import org.springframework.http.HttpMethod
@@ -13,27 +12,26 @@ import reactor.util.retry.Retry
 import java.time.Duration
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
+import java.util.concurrent.TimeUnit
 import java.util.function.Consumer
 
 abstract class SessionRequiredVms(
-    protected val environment: Environment,
     mongoTemplate: ReactiveMongoTemplate,
     vmsSynchronizeService: VmsSynchronizeService,
-    httpMethod: HttpMethod = HttpMethod.GET,
+    private val httpMethod: HttpMethod = HttpMethod.GET,
 //    siteRepo: SiteRepo,
 //    cameraRepo: CameraRepo
-) : DefaultVms(mongoTemplate,vmsSynchronizeService), Vms, LoginRequired, SessionRequired, InitializingBean {
+) : DefaultVms(mongoTemplate, vmsSynchronizeService), Vms, LoginRequired, SessionRequired, InitializingBean {
 
-    protected val sessionClient: WebClient = WebClient.builder().baseUrl("http://localhost").build()
-    private var httpMethod: HttpMethod = httpMethod
-    private val sessionUri: String = environment.getProperty("vms.session.refresh-uri")!!
-    protected val sessionPeriod: Long = environment.getProperty("vms.session.refresh-on", Long::class.java)!!
-    protected val scheduler: ScheduledExecutorService = Executors.newSingleThreadScheduledExecutor()
+    abstract var sessionClient: WebClient
 
-    override fun <T> refreshSession(headersConsumer: Consumer<HttpHeaders>, body: T) {
+    private val sessionPeriod = 60L
+    private var scheduler: ScheduledExecutorService = Executors.newSingleThreadScheduledExecutor()
+
+    override fun <T> refreshSession(uri: String, headers: Map<String, String>, body: T) {
         val requestSpec = sessionClient.method(this.httpMethod)
-            .uri(this.sessionUri)
-            .headers(headersConsumer)
+            .uri(uri)
+            .headers { it.setAll(headers) }
             .accept(MediaType.APPLICATION_JSON)
 
         if (body != null) requestSpec.bodyValue(body)
@@ -49,11 +47,17 @@ abstract class SessionRequiredVms(
                     .doBeforeRetry { log.info("retrying session refresh request") }
                     .onRetryExhaustedThrow { _, retrySignal -> retrySignal.failure() }
             )
-            .doOnError { thr -> log.info("session refresh failed. ${thr.localizedMessage}") }
+            .doOnError { thr -> log.error("session refresh failed. ${thr.localizedMessage}") }
             .subscribe()
     }
 
-    protected fun setHttpMethod(httpMethod: HttpMethod) {
-        this.httpMethod = httpMethod
+    protected fun scheduleJob(job: () -> Unit) {
+        log.info("$type scheduleJob started")
+        if (!scheduler.isShutdown) {
+//            scheduler.shutdownNow()
+            scheduler = Executors.newSingleThreadScheduledExecutor()
+        }
+
+        scheduler.scheduleAtFixedRate(job, 0, sessionPeriod, TimeUnit.SECONDS)
     }
 }

@@ -7,6 +7,7 @@ import com.oms.vms.VmsType
 import com.oms.vms.digest.DigestAuthenticatorClient
 import com.oms.vms.service.VmsSynchronizeService
 import kotlinx.coroutines.reactor.awaitSingle
+import org.bson.Document
 import org.springframework.data.mongodb.core.ReactiveMongoTemplate
 import org.springframework.http.HttpHeaders
 import org.springframework.http.MediaType
@@ -38,7 +39,12 @@ class DahuaNvr(
 
     override suspend fun synchronize() {
         val vmsConfig = getVmsConfig()
-        val client = DigestAuthenticatorClient(webClient, vmsConfig.id, vmsConfig.password)
+
+        webClient = webClient.mutate()
+            .baseUrl("http://${vmsConfig.ip}:${vmsConfig.port}")
+            .build()
+
+        val client = DigestAuthenticatorClient(webClient, vmsConfig.username, vmsConfig.password)
         val uri = "/cgi-bin/configManager.cgi?action=getConfig&name=RemoteDevice"
         val response = client.makeRequest(uri).awaitSingle()
 

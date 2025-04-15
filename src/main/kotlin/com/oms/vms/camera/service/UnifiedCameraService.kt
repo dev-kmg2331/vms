@@ -7,11 +7,13 @@ import com.oms.vms.field_mapping.transformation.FieldTransformation
 import com.oms.vms.mongo.docs.*
 import com.oms.vms.mongo.repo.FieldMappingRepository
 import format
-import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.toList
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.reactive.asFlow
 import kotlinx.coroutines.reactive.awaitFirst
 import kotlinx.coroutines.reactive.awaitFirstOrNull
+import kotlinx.coroutines.reactor.awaitSingle
+import kotlinx.coroutines.reactor.awaitSingleOrNull
 import org.bson.Document
 import org.slf4j.LoggerFactory
 import org.springframework.data.mongodb.core.ReactiveMongoTemplate
@@ -53,7 +55,7 @@ class UnifiedCameraService(
      * @param vmsType 동기화할 VMS 유형 (예: "emstone", "naiz", "dahua")
      * @throws ApiAccessException 매핑 규칙이 유효하지 않거나 동기화 중 오류가 발생한 경우
      */
-    suspend fun synchronizeVmsData(vmsType: String) {
+    suspend fun synchronizeVmsData(vmsType: String) = coroutineScope {
         log.info("Starting synchronization process for {} VMS", vmsType)
 
         // 지정된 VMS 유형에 대한 매핑 규칙 가져오기
@@ -68,14 +70,33 @@ class UnifiedCameraService(
         try {
             // 이 VMS 유형에 대한 모든 카메라 문서 검색
             val cameraQuery = Query.query(Criteria.where("vms").`is`(vmsType))
+
             val cameras = mongoTemplate.find(cameraQuery, Document::class.java, VMS_CAMERA)
+            val unifiedCameraIDs = mongoTemplate.find(cameraQuery, UnifiedCamera::class.java).asFlow()
 
             log.info("Processing {} VMS cameras with mapping rules: {}", vmsType, gson.toJson(mappingRules))
 
             // 각 카메라 문서 변환 및 저장
-            val saved = cameras.asFlow().map { mapToUnifiedCamera(it, mappingRules) }.toList()
+            val unified = cameras.asFlow().map { mapToUnifiedCamera(it, mappingRules) }
 
-            log.info("Successfully synchronized {} VMS - processed {} cameras", vmsType, saved.size)
+            log.info("Filtering un updated unified cameras")
+
+            val newUnifiedCameraIDs = unified.map { it.id }.toSet()
+
+            val filtered = unifiedCameraIDs.filterNot { newUnifiedCameraIDs.contains(it.id) }.toList()
+
+            log.info("Filtered ${filtered.count()} not updated unified cameras. ${if (filtered.isEmpty()) "" else "Removing from database..."}")
+
+            filtered.forEach {
+                log.info("Removing camera ${it.id}")
+
+                mongoTemplate.save(DeprecatedUnifiedCamera.instance(it), VMS_CAMERA_UNIFIED_DEPRECATED).awaitSingle()
+
+                mongoTemplate.remove(Query.query(Criteria.where("_id").`is`(it.id)), VMS_CAMERA_UNIFIED)
+                    .awaitSingleOrNull()
+            }
+
+            log.info("Successfully synchronized {} VMS - processed {} cameras", vmsType, unified.count())
         } catch (e: Exception) {
             log.error("Failed to synchronize {} VMS data: {}", vmsType, e.message, e)
             throw ApiAccessException(
@@ -155,8 +176,6 @@ class UnifiedCameraService(
         vmsCamera: Document,
         mappingRules: FieldMappingDocument
     ): UnifiedCamera {
-        log.info("Updating existing camera: {}", existingCamera.id)
-
         // 기존 카메라를 문서로 변환
         val document = Document()
         val converter = mongoTemplate.converter

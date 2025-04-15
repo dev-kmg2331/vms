@@ -53,28 +53,10 @@ class EmstoneUnifiedCameraServiceTest {
 
     @BeforeTest
     fun setup() {
-        val vmsConfig = VmsConfig(
-            username = "admin",
-            password = "oms20190211",
-            ip = "192.168.182.200",
-            port = "80",
-            vms = "emstone"
-        )
-
-        val authToken =
-            Base64.getEncoder().encodeToString("${vmsConfig.id}:${vmsConfig.password}".toByteArray(Charsets.UTF_8))
-
-        val webClient = WebClient.builder()
-            .baseUrl("http://${vmsConfig.ip}:${vmsConfig.port}")
-            .defaultHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
-            .defaultHeader(HttpHeaders.AUTHORIZATION, "Basic $authToken")
-            .build()
-
         vms = EmstoneNvr(mongoTemplate, vmsSynchronizeService)
 
         listOf(
 //            VMS_CAMERA_UNIFIED,
-            VMS_CAMERA_KEYS,
             VMS_CAMERA,
             VMS_RAW_JSON,
             VMS_FIELD_MAPPINGS

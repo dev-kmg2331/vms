@@ -46,8 +46,9 @@ data class VmsConfig(
     @Field("updated_at")
     var updatedAt: String = LocalDateTime.now().format(),
 
-) {
-    fun additionalInfoByKey(key: String) = this.additionalInfo.find { it.key == key }
+    ) {
+    fun getAdditionalInfo(key: String) = this.additionalInfo.find { it.key == key }?.value
+        ?: throw IllegalArgumentException("No additional info found with key $key")
 }
 
 /**
@@ -58,7 +59,7 @@ data class VmsAdditionalInfo(
     @Field("key")
     val key: String,                     // 정보 키
     @Field("value")
-    val value: Any,                      // 정보 값
+    val value: String,                      // 정보 값
     @Field("description")
     val description: String = "",     // 설명
     @Field("created_at")

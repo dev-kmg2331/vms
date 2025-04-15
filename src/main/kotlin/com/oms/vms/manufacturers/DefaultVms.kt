@@ -10,6 +10,7 @@ import com.oms.vms.service.VmsSynchronizeService
 import format
 import kotlinx.coroutines.reactive.awaitFirstOrNull
 import kotlinx.coroutines.reactor.awaitSingle
+import kotlinx.coroutines.runBlocking
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 import org.springframework.data.mongodb.core.ReactiveMongoTemplate
@@ -19,6 +20,7 @@ import org.springframework.http.HttpHeaders
 import org.springframework.http.HttpStatus
 import org.springframework.http.HttpStatusCode
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor
+import org.springframework.transaction.annotation.Transactional
 import org.springframework.web.reactive.function.client.ClientResponse
 import org.springframework.web.reactive.function.client.WebClient
 import reactor.util.retry.Retry
@@ -58,19 +60,7 @@ abstract class DefaultVms protected constructor(
         executor.initialize()
     }
 
-//    protected fun handleDownloadError(download: VmsDownload): Function<Throwable, Mono<out VmsDownload>> {
-//        return Function { ex ->
-//            log.error("Download failed. ", ex)
-//            when (ex) {
-//                is InterruptedException -> Mono.just(download.ofError(DownloadStatus.CANCEL))
-//                is ExecutionException -> Mono.just(download.ofError(DownloadStatus.VIDEO_PATH_NULL))
-//                is RetryExhaustedException -> Mono.just(download.ofError(DownloadStatus.MAX_RETRY_ERROR))
-//                else -> Mono.just(download.ofError(DownloadStatus.NO_RECORDED_AT_THAT_TIME))
-//            }
-//        }
-//    }
-
-    override suspend fun getVmsConfig(includeInactive: Boolean): VmsConfig {
+    override fun getVmsConfig(includeInactive: Boolean): VmsConfig = runBlocking {
         val await = mongoTemplate.find(
             Query.query(Criteria.where("vms").`is`(type)),
             VmsConfig::class.java,
@@ -79,9 +69,10 @@ abstract class DefaultVms protected constructor(
 
         if (!includeInactive) await.apply { if (!this.isActive) throw ApiAccessException(HttpStatus.BAD_REQUEST, "vms config is not active.") }
 
-        return await
+        await
     }
 
+    @Transactional(rollbackFor = [ApiAccessException::class, Exception::class])
     override suspend fun saveVmsConfig(vmsConfigRequest: VmsConfigUpdateRequest): VmsConfig {
         val vmsConfig = mongoTemplate.find(
             Query.query(Criteria.where("vms").`is`(type)),
@@ -101,6 +92,8 @@ abstract class DefaultVms protected constructor(
                 Query.query(Criteria.where("vms").`is`(type)),
                 vmsConfig,
             ).awaitSingle()
+
+            vmsConfig
         } else {
             val password = vmsConfigRequest.password ?: throw ApiAccessException(HttpStatus.BAD_REQUEST, "password is cannot be empty.")
 
@@ -114,6 +107,8 @@ abstract class DefaultVms protected constructor(
                 additionalInfo = vmsConfigRequest.additionalInfo.toMutableList()
             )
             mongoTemplate.save(newConfig).awaitSingle()
+
+            newConfig
         }
     }
 

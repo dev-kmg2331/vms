@@ -49,7 +49,7 @@ class FieldMappingServiceTest {
         testMappingDocument = FieldMappingDocument(
             id = UUID.randomUUID().toString(),
             vms = vmsType,
-            transformations = listOf(),
+            transformations = mutableListOf(),
             description = "Test mapping document",
             createdAt = LocalDateTime.now().format(),
             updatedAt = LocalDateTime.now().format()
@@ -110,7 +110,7 @@ class FieldMappingServiceTest {
     fun `addTransformation should add transformation to mapping rules`() = runTest {
         // given
         val updatedMappingDoc = testMappingDocument.copy(
-            transformations = listOf(testTransformation),
+            transformations = mutableListOf(testTransformation),
             updatedAt = LocalDateTime.now().format()
         )
 
@@ -147,12 +147,12 @@ class FieldMappingServiceTest {
     fun `removeTransformation should remove transformation from mapping rules`() = runTest {
         // given
         val mappingWithTransformation = testMappingDocument.copy(
-            transformations = listOf(testTransformation),
+            transformations = mutableListOf(testTransformation),
             updatedAt = LocalDateTime.now().format()
         )
 
         val mappingWithoutTransformation = testMappingDocument.copy(
-            transformations = listOf(),
+            transformations = mutableListOf(),
             updatedAt = LocalDateTime.now().format()
         )
 
@@ -181,7 +181,7 @@ class FieldMappingServiceTest {
         )
 
         val mappingWithTransformations = testMappingDocument.copy(
-            transformations = listOf(testTransformation, anotherTransformation)
+            transformations = mutableListOf(testTransformation, anotherTransformation)
         )
 
         coEvery { fieldMappingRepository.getMappingRules(vmsType) } returns mappingWithTransformations
@@ -215,7 +215,7 @@ class FieldMappingServiceTest {
         )
 
         val mappingWithTransformations = testMappingDocument.copy(
-            transformations = listOf(testTransformation, numberTransformation, booleanTransformation)
+            transformations = mutableListOf(testTransformation, numberTransformation, booleanTransformation)
         )
 
         coEvery { fieldMappingRepository.getMappingRules(vmsType) } returns mappingWithTransformations
@@ -256,7 +256,7 @@ class FieldMappingServiceTest {
     fun `resetMappingRules should reset mapping rules for vms type`() = runTest {
         // given
         coEvery { fieldMappingRepository.deleteMappingRules(vmsType) } returns true
-        coEvery { fieldMappingRepository.getMappingRules(vmsType) } returns testMappingDocument.copy(transformations = listOf())
+        coEvery { fieldMappingRepository.getMappingRules(vmsType) } returns testMappingDocument.copy(transformations = mutableListOf())
 
         // when
         val result = fieldMappingService.resetMappingRules(vmsType)

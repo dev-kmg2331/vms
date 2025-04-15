@@ -9,6 +9,7 @@ import org.springframework.http.HttpStatus
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
+import java.util.*
 
 interface Transformation {
     val sourceField: String     // 원본 필드
@@ -24,6 +25,7 @@ data class FieldTransformation(
     val transformationType: TransformationType, // 변환 유형
     val parameters: Map<String, String> = mapOf() // 변환에 필요한 추가 매개변수
 ) : Transformation {
+
     fun sourceIsDocument(): Boolean = sourceField.contains("-")
 
     fun sourceIsList(): Boolean = sourceField.contains("[0]")
@@ -33,7 +35,7 @@ data class FieldTransformation(
 
         var fields = sourceField.split("-")
         val lastField = fields.last()
-        fields = fields.subList(0, fields.size - 2)
+        fields = fields.subList(0, fields.size - 1)
 
         for (field in fields) {
             doc = sourceDoc.get(field, Document::class.java) ?: throw ApiAccessException(
@@ -84,8 +86,10 @@ enum class TransformationType {
             if (sourceValue != null) {
                 val result = when (sourceValue) {
                     is Boolean -> sourceValue
-                    is String -> sourceValue.equals("true", ignoreCase = true) ||
-                            sourceValue.equals("yes", ignoreCase = true) ||
+                    is String -> sourceValue.lowercase(Locale.getDefault()).equals("true", ignoreCase = true) ||
+                            sourceValue.lowercase(Locale.getDefault()).equals("yes", ignoreCase = true) ||
+                            sourceValue.lowercase(Locale.getDefault()).equals("y", ignoreCase = true) ||
+                            sourceValue.lowercase(Locale.getDefault()).equals("on", ignoreCase = true) ||
                             sourceValue.equals("1", ignoreCase = true)
 
                     is Number -> sourceValue.toInt() != 0
@@ -101,22 +105,26 @@ enum class TransformationType {
             unifiedCamera: Document,
             transformation: FieldTransformation
         ) {
-            val sourceValue = source[transformation.sourceField]
-            if (sourceValue != null) {
-                val result = when (sourceValue) {
-                    is Number -> sourceValue
-                    is String -> try {
-                        if (sourceValue.contains(".")) sourceValue.toDouble() else sourceValue.toInt()
-                    } catch (e: Exception) {
-                        null
-                    }
+            try {
+                val sourceValue = source[transformation.sourceField]
+                if (sourceValue != null) {
+                    val result = when (sourceValue) {
+                        is Number -> sourceValue
+                        is String -> try {
+                            if (sourceValue.contains(".")) sourceValue.toDouble() else sourceValue.toInt()
+                        } catch (e: Exception) {
+                            null
+                        }
 
-                    else -> null
+                        else -> null
+                    }
+                    if (result != null) {
+                        unifiedCamera[transformation.targetField] = result
+                    }
                 }
-                if (result != null) {
-                    unifiedCamera[transformation.targetField] = result
-                }
-            } else throw ApiAccessException(HttpStatus.BAD_REQUEST, "source ${transformation.sourceField} is invalid")
+            } catch (e: Exception) {
+                throw ApiAccessException(HttpStatus.BAD_REQUEST, e, "source ${transformation.sourceField} is invalid")
+            }
         }
     },
     STRING_FORMAT {

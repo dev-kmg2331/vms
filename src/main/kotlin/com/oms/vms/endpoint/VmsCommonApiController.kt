@@ -227,5 +227,5 @@ data class VmsConfigUpdateRequest(
     val password: String?, // null인 경우 기존 비밀번호 유지
     val ip: String,
     val port: String,
-    val additionalInfo: List<VmsAdditionalInfo>
+    val additionalInfo: List<VmsAdditionalInfo> = emptyList()
 )

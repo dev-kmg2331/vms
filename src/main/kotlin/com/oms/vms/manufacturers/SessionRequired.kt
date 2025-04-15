@@ -4,5 +4,5 @@ import org.springframework.http.HttpHeaders
 import java.util.function.Consumer
 
 interface SessionRequired {
-    fun <T> refreshSession(headersConsumer: Consumer<HttpHeaders>, body: T)
+    fun <T> refreshSession(uri: String, headers: Map<String, String>, body: T)
 }
