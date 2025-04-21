@@ -54,7 +54,7 @@ class EmstoneNvrTest : WithMongoDBTestContainer {
                     username = "admin",
                     password = "oms20190211",
                     ip = "192.168.182.200",
-                    port = "80",
+                    port = 80,
                     additionalInfo = listOf()
                 )
             )
@@ -186,7 +186,7 @@ class EmstoneNvrTest : WithMongoDBTestContainer {
             username = "admin",
             password = "oms20190211",
             ip = "192.168.182.200",
-            port = "80",
+            port = 80,
             additionalInfo = listOf()
         )
 

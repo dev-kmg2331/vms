@@ -23,6 +23,7 @@ import org.springframework.http.HttpStatusCode
 import org.springframework.http.MediaType
 import org.springframework.stereotype.Component
 import org.springframework.web.reactive.function.client.WebClient
+import org.springframework.web.reactive.function.client.WebClientRequestException
 import reactor.core.publisher.Mono
 
 @ExcludeInTestProfile
@@ -227,12 +228,11 @@ class VurixVms(
             .uri("/login?force-login=true")
             .retrieve()
             .onStatus(
-                { obj: HttpStatusCode -> obj.is4xxClientError },
-                { clientResponse ->
-                    clientResponse.bodyToMono(String::class.java).map { RuntimeException("vurix login failed.") }
-                }
+                { it.is4xxClientError },
+                { it.bodyToMono(String::class.java).map { RuntimeException("vurix login failed. server response: $it") } }
             )
             .bodyToMono(String::class.java)
+            .onErrorMap(WebClientRequestException::class.java) { RuntimeException("vurix login failed. server connection failed.") }
             .mapNotNull { JsonParser.parseString(it) }
             .doOnSuccess { json ->
                 val resp = json.asJsonObject["results"].asJsonObject

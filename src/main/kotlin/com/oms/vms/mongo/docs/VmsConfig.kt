@@ -25,7 +25,7 @@ data class VmsConfig(
     @Field("ip")
     var ip: String,              // VMS IP 주소
     @Field("port")
-    var port: String,            // VMS 포트
+    var port: Int,            // VMS 포트
 
     // 설정 및 상태 관리 필드
     @Field("vms")

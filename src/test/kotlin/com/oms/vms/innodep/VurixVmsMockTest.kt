@@ -137,7 +137,7 @@ class VurixVmsMockTest: WithMongoDBTestContainer {
             username = "testUser",
             password = "testPassword",
             ip = "192.168.0.100",
-            port = "8080",
+            port = 8080,
             vms = "vurix",
             additionalInfo = mutableListOf()
         )
@@ -193,7 +193,7 @@ class VurixVmsMockTest: WithMongoDBTestContainer {
 
         // given - 업데이트할 설정값 준비
         val updatedIp = "192.168.0.200"
-        val updatedPort = "9090"
+        val updatedPort = 9090
         val updatedUsername = "updatedUser"
         val updatedPassword = "updatedPassword"
         val additionalInfo = listOf(
@@ -278,7 +278,7 @@ class VurixVmsMockTest: WithMongoDBTestContainer {
 
         // given - 업데이트할 설정값 준비 (비밀번호는 null로 설정)
         val updatedIp = "192.168.0.200"
-        val updatedPort = "9090"
+        val updatedPort = 9090
         val updatedUsername = "updatedUser"
         val currentPassword = "testPassword" // 기존 비밀번호
         

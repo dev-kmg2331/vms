@@ -107,7 +107,7 @@ class NaizVmsTest: WithMongoDBTestContainer {
                 username = "admin",
                 password = "admin",
                 ip = "naiz.re.kr",
-                port = "8002",
+                port = 8002,
                 vms = "naiz"
             )
         )
@@ -179,7 +179,7 @@ class NaizVmsTest: WithMongoDBTestContainer {
                 username = "admin",
                 password = "admin",
                 ip = "naiz.re.kr",
-                port = "8002",
+                port = 8002,
             )
         )
 

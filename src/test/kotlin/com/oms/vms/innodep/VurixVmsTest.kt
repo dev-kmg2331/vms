@@ -46,7 +46,7 @@ class VurixVmsTest : WithMongoDBTestContainer {
                 username = "sdk",
                 password = "Innodep1@",
                 ip = "211.171.190.220",
-                port = "16118",
+                port = 16118,
                 vms = "vurix",
                 additionalInfo = mutableListOf(
                     VmsAdditionalInfo("license", "licNormalClient"),
