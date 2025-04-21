@@ -24,7 +24,7 @@ interface Vms {
 
     fun initialize()
 
-    fun getVmsConfig(includeInactive: Boolean = false): VmsConfig
+    suspend fun getVmsConfig(includeInactive: Boolean = false): VmsConfig
     suspend fun saveVmsConfig(vmsConfigRequest: VmsConfigUpdateRequest): VmsConfig
     suspend fun setVmsConfigActive(active: Boolean): VmsConfig
 }

@@ -1,10 +1,12 @@
 package com.oms.vms.manufacturers.innodep
 
 import com.google.gson.JsonParser
+import com.oms.ExcludeInTestProfile
 import com.oms.api.exception.ApiAccessException
 import com.oms.vms.VmsType
 import com.oms.vms.endpoint.VmsConfigUpdateRequest
 import com.oms.vms.manufacturers.SessionRequiredVms
+import com.oms.vms.mongo.docs.VMS_CONFIG
 import com.oms.vms.mongo.docs.VmsConfig
 import com.oms.vms.service.VmsSynchronizeService
 import kotlinx.coroutines.async
@@ -13,6 +15,8 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.reactor.awaitSingle
 import org.bson.Document
 import org.springframework.data.mongodb.core.ReactiveMongoTemplate
+import org.springframework.data.mongodb.core.query.Criteria
+import org.springframework.data.mongodb.core.query.Query
 import org.springframework.http.HttpHeaders
 import org.springframework.http.HttpStatus
 import org.springframework.http.HttpStatusCode
@@ -21,6 +25,7 @@ import org.springframework.stereotype.Component
 import org.springframework.web.reactive.function.client.WebClient
 import reactor.core.publisher.Mono
 
+@ExcludeInTestProfile
 @Component(value = "vurix")
 class VurixVms(
     mongoTemplate: ReactiveMongoTemplate,
@@ -41,7 +46,11 @@ class VurixVms(
 
     override fun afterPropertiesSet() {
         try {
-            val vmsConfig = getVmsConfig()
+            val vmsConfig = mongoTemplate.find(
+                Query.query(Criteria.where("vms").`is`(type)),
+                VmsConfig::class.java,
+                VMS_CONFIG
+            ).blockFirst() ?: throw RuntimeException("VMS config not found")
             loadLoginContext(vmsConfig)
         } catch (e: Throwable) {
             log.error("VURIX VMS SERVICE UNAVAILABLE!!! LOGIN FAILED!!! MESSAGE: ${e.message}")
@@ -165,7 +174,12 @@ class VurixVms(
             additionalInfo = vmsConfigRequest.additionalInfo.toMutableList()
         )
 
-        loadLoginContext(newConfig)
+        try {
+            loadLoginContext(newConfig)
+        } catch (e: ApiAccessException) {
+            super.saveVmsConfig(vmsConfigRequest)
+            throw ApiAccessException(HttpStatus.MULTI_STATUS, "vurix login failed. check credentials.")
+        }
 
         val vmsConfig = super.saveVmsConfig(vmsConfigRequest)
 

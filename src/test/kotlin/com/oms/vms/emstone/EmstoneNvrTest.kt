@@ -1,16 +1,19 @@
 package com.oms.vms.emstone
 
 import com.google.gson.JsonObject
+import com.oms.api.exception.ApiAccessException
 import com.oms.logging.gson.gson
+import com.oms.vms.WithMongoDBTestContainer
 import com.oms.vms.endpoint.VmsConfigUpdateRequest
 import com.oms.vms.manufacturers.emstone.EmstoneNvr
 import com.oms.vms.mongo.docs.VmsConfig
 import com.oms.vms.service.VmsSynchronizeService
 import kotlinx.coroutines.reactor.awaitSingle
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import org.bson.Document
-import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.*
+import org.junit.jupiter.api.assertThrows
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
@@ -18,19 +21,18 @@ import org.springframework.data.mongodb.core.ReactiveMongoTemplate
 import org.springframework.data.mongodb.core.query.Criteria
 import org.springframework.data.mongodb.core.query.Query
 import org.springframework.test.context.ActiveProfiles
-import org.springframework.web.reactive.function.client.WebClient
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
+import java.util.*
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 
+
 @SpringBootTest
 @ActiveProfiles("test")
-class EmstoneNvrTest {
+class EmstoneNvrTest : WithMongoDBTestContainer {
 
-    private lateinit var vmsConfig: VmsConfig
     private lateinit var vms: EmstoneNvr
-    private lateinit var webClient: WebClient
 
     @Autowired
     private lateinit var mongoTemplate: ReactiveMongoTemplate
@@ -38,35 +40,32 @@ class EmstoneNvrTest {
     @Autowired
     private lateinit var vmsSynchronizeService: VmsSynchronizeService
 
+    private lateinit var vmsConfig: VmsConfig
+
     private val log = LoggerFactory.getLogger(this::class.java)
 
     @BeforeTest
     fun setup() {
         vms = EmstoneNvr(mongoTemplate, vmsSynchronizeService)
-    }
 
-    @AfterEach
-    fun cleanUp() {
-//        runBlocking {
-//            // 테스트 후 컬렉션 정리
-//            mongoTemplate.dropCollection("vms_raw_json").block()
-//            mongoTemplate.dropCollection("vms_camera").block()
-//        }
+        runBlocking {
+            vms.saveVmsConfig(
+                VmsConfigUpdateRequest(
+                    username = "admin",
+                    password = "oms20190211",
+                    ip = "192.168.182.200",
+                    port = "80",
+                    additionalInfo = listOf()
+                )
+            )
+        }
     }
 
     @Test
     fun `synchronize should fetch camera data from Emstone API and store in MongoDB`(): Unit = runTest {
-        // when: API 호출 및 동기화 실행
-        vms.saveVmsConfig(
-            VmsConfigUpdateRequest(
-                username = "admin",
-                password = "oms20190211",
-                ip = "192.168.182.200",
-                port = "80",
-                additionalInfo = listOf()
-            )
-        )
+        // given
 
+        // when: API 호출 및 동기화 실행
         vms.synchronize()
 
         // then: MongoDB에 저장된 데이터 확인
@@ -123,12 +122,15 @@ class EmstoneNvrTest {
 
     @Test
     fun `synchronize should handle API response format correctly`() = runTest {
+        // given
+
+
         // when: 동기화 실행
         vms.synchronize()
 
         // then: 응답이 올바르게 파싱되었는지 확인
         val rawJsonDoc = mongoTemplate.findOne(
-            Query.query(Criteria.where("vms.type").`is`("emstone")),
+            Query.query(Criteria.where("vms").`is`("emstone")),
             Document::class.java,
             "vms_raw_json"
         ).block()
@@ -155,7 +157,7 @@ class EmstoneNvrTest {
 
         // then: 저장된 문서의 타임스탬프 형식 확인
         val documents = mongoTemplate.find(
-            Query.query(Criteria.where("vms.type").`is`("emstone")),
+            Query.query(Criteria.where("vms").`is`("emstone")),
             Document::class.java,
             "vms_camera"
         ).collectList().block() ?: emptyList()
@@ -175,5 +177,81 @@ class EmstoneNvrTest {
                 fail("Invalid date format: $createdAt, expected format: yyyy-MM-dd HH:mm:ss")
             }
         }
+    }
+
+    @Test
+    fun `getRtspUrl should return correctly formatted RTSP URL`() = runTest {
+        // given
+        val vmsConfigRequest = VmsConfigUpdateRequest(
+            username = "admin",
+            password = "oms20190211",
+            ip = "192.168.182.200",
+            port = "80",
+            additionalInfo = listOf()
+        )
+
+        vms.saveVmsConfig(vmsConfigRequest)
+
+        // 테스트용 카메라 데이터 생성
+        val emstoneId = 1 // 엠스톤 NVR의 카메라 ID
+
+        // VMS 카메라 정보 생성 및 저장
+        val cameraDoc = Document()
+        cameraDoc["_id"] = UUID.randomUUID().toString()
+        cameraDoc["vms"] = "emstone"
+        cameraDoc["id"] = emstoneId
+        cameraDoc["name"] = "Test Camera"
+        cameraDoc["created_at"] = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"))
+
+        mongoTemplate.save(cameraDoc, "vms_camera").awaitSingle()
+
+        // when: getRtspUrl 메소드 호출
+        val rtspUrl = vms.getRtspURL(cameraDoc["_id"] as String)
+
+        // then: 반환된 RTSP URL이 올바른 형식인지 확인
+        // 예상되는 URL 형식: rtsp://username:password@ip/videoId
+        val expectedUrl =
+            "rtsp://${vmsConfigRequest.username}:${vmsConfigRequest.password}@${vmsConfigRequest.ip}/video$emstoneId"
+        assertEquals(expectedUrl, rtspUrl, "RTSP URL should be correctly formatted")
+    }
+
+    @Test
+    fun `getRtspUrl should throw ApiAccessException when camera not found`() = runTest {
+        // given: VMS 설정만 저장하고 카메라 정보는 없음
+
+        // when & then: 존재하지 않는 카메라 ID로 호출하면 예외 발생
+        val nonExistentCameraId = "non_existent_camera"
+
+        val exception = assertThrows<ApiAccessException> { vms.getRtspURL(nonExistentCameraId) }
+
+        // 예외 메시지 확인
+        assertTrue(
+            exception.message.contains("not found"),
+            "Exception message should indicate camera not found"
+        )
+    }
+
+    @Test
+    fun `getRtspUrl should throw ApiAccessException when camera has no id property`() = runTest {
+        // given
+
+        // ID 속성이 누락된 카메라 문서 생성
+        val cameraId = "camera_without_id"
+        val cameraDoc = Document()
+        cameraDoc["_id"] = cameraId
+        cameraDoc["vms"] = "emstone"
+        cameraDoc["name"] = "Camera Without ID"
+        cameraDoc["created_at"] = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"))
+
+        mongoTemplate.save(cameraDoc, "vms_camera").awaitSingle()
+
+        // when & then: ID 속성이 없는 카메라에 대해 호출하면 예외 발생
+        val exception = assertThrows<ApiAccessException> { vms.getRtspURL(cameraId) }
+
+        // 예외 메시지 확인
+        assertTrue(
+            exception.message.contains("id property not found"),
+            "Exception message should indicate missing id property"
+        )
     }
 }

@@ -16,13 +16,14 @@ import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
+import java.util.UUID
 
 /**
  * 통합 카메라 관리 컨트롤러
  * VMS 유형별 카메라 데이터의 동기화 및 통합 카메라 데이터 조회를 위한 API 제공
  */
 @RestController
-@RequestMapping("/api/vms/cameras")
+@RequestMapping("/api/v2/vms/unified/cameras")
 @Tag(name = "통합 카메라 관리", description = "통합 카메라 데이터 관리 API")
 class UnifiedCameraController(
     private val unifiedCameraService: UnifiedCameraService
@@ -73,8 +74,10 @@ class UnifiedCameraController(
         description = "통합 카메라 목록 조회 성공",
         content = [Content(array = ArraySchema(schema = Schema(implementation = UnifiedCamera::class)))]
     )
-    suspend fun getAllUnifiedCameras(): ResponseEntity<*> =
-        ResponseUtil.success(unifiedCameraService.getAllUnifiedCameras())
+    suspend fun getAllUnifiedCameras(
+        @RequestParam(value = "page", defaultValue = "0") page: Int,
+        @RequestParam(value = "size", defaultValue = "50") size: Int,
+    ): ResponseEntity<*> = ResponseUtil.success(unifiedCameraService.getAllUnifiedCameras())
 
     /**
      * 특정 VMS 유형의 통합 카메라 데이터 조회
@@ -95,7 +98,19 @@ class UnifiedCameraController(
             required = true,
             schema = Schema(type = "string", implementation = VmsType::class)
         )
-        @PathVariable vmsType: String
+        @PathVariable vmsType: String,
+        @RequestParam(value = "page", defaultValue = "0") page: Int,
+        @RequestParam(value = "size", defaultValue = "50") size: Int,
     ): ResponseEntity<*> =
-        ResponseUtil.success(unifiedCameraService.getUnifiedCamerasByVmsType(vmsType))
+        ResponseUtil.success(unifiedCameraService.getUnifiedCamerasByVmsType(page, size, vmsType))
+
+    @GetMapping("/{id}")
+    suspend fun getUnifiedCameraById(@PathVariable("id") id: String): ResponseEntity<*> {
+        return try {
+            val camera = unifiedCameraService.getCamera(UUID.fromString(id))
+            ResponseUtil.success(camera)
+        } catch (e: Exception) {
+            TODO("Not yet implemented")
+        }
+    }
 }

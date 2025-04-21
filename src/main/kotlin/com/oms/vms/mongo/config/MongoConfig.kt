@@ -1,6 +1,7 @@
 package com.oms.vms.mongo.config
 
 import com.mongodb.reactivestreams.client.MongoClient
+import com.oms.ExcludeInTestProfile
 import com.oms.camelToSnakeCase
 import com.oms.vms.mongo.docs.DeprecatedUnifiedCamera
 import org.bson.Document
@@ -18,6 +19,7 @@ import org.springframework.data.mongodb.core.index.Index
 import org.springframework.transaction.annotation.EnableTransactionManagement
 import java.util.concurrent.TimeUnit
 
+@ExcludeInTestProfile
 @Configuration
 @EnableTransactionManagement
 class MongoConfig(private val environment: Environment) : AbstractReactiveMongoConfiguration() {

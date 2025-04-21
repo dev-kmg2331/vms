@@ -2,6 +2,7 @@ package com.oms.vms.camera.service
 
 import com.oms.api.exception.ApiAccessException
 import com.oms.logging.gson.gson
+import com.oms.vms.Vms
 import com.oms.vms.VmsFactory
 import com.oms.vms.field_mapping.transformation.FieldTransformation
 import com.oms.vms.mongo.docs.*
@@ -16,6 +17,9 @@ import kotlinx.coroutines.reactor.awaitSingle
 import kotlinx.coroutines.reactor.awaitSingleOrNull
 import org.bson.Document
 import org.slf4j.LoggerFactory
+import org.springframework.data.domain.PageImpl
+import org.springframework.data.domain.PageRequest
+import org.springframework.data.domain.Sort
 import org.springframework.data.mongodb.core.ReactiveMongoTemplate
 import org.springframework.data.mongodb.core.query.Criteria
 import org.springframework.data.mongodb.core.query.Query
@@ -41,6 +45,11 @@ class UnifiedCameraService(
     private val vmsFactory: VmsFactory,
 ) {
     private val log = LoggerFactory.getLogger(UnifiedCameraService::class.java)
+
+    suspend fun getCamera(id: UUID): UnifiedCamera {
+        return mongoTemplate.findOne(Query.query(Criteria.where("_id").`is`(id)), UnifiedCamera::class.java)
+            .awaitSingleOrNull() ?: throw ApiAccessException(HttpStatus.NOT_FOUND, "Camera not found. ID: $id")
+    }
 
     /**
      * 특정 VMS 유형의 카메라 데이터를 통합 구조로 동기화합니다
@@ -76,8 +85,10 @@ class UnifiedCameraService(
 
             log.info("Processing {} VMS cameras with mapping rules: {}", vmsType, gson.toJson(mappingRules))
 
+            val vms = vmsFactory.getService(mappingRules.vms)
+
             // 각 카메라 문서 변환 및 저장
-            val unified = cameras.asFlow().map { mapToUnifiedCamera(it, mappingRules) }
+            val unified = cameras.asFlow().map { mapToUnifiedCamera(it, mappingRules, vms) }
 
             log.info("Filtering un updated unified cameras")
 
@@ -122,7 +133,8 @@ class UnifiedCameraService(
      */
     private suspend fun mapToUnifiedCamera(
         vmsCamera: Document,
-        mappingRules: FieldMappingDocument
+        mappingRules: FieldMappingDocument,
+        vms: Vms
     ): UnifiedCamera {
         // 채널 ID 추출
         val sourceField = mappingRules.channelIdTransformation!!.sourceField
@@ -130,18 +142,17 @@ class UnifiedCameraService(
             HttpStatus.BAD_REQUEST,
             "Channel ID transformation rule source field error. Unknown field: $sourceField"
         )
-        val vmsType = mappingRules.vms
 
         // 동일한 채널 ID를 가진 기존 카메라 확인
-        val existingCamera = findExistingCamera(channelID, vmsType)
+        val existingCamera = findExistingCamera(channelID, vms.type)
 
         // 기존 카메라 업데이트 처리
         if (existingCamera != null) {
-            return updateExistingCamera(existingCamera, vmsCamera, mappingRules)
+            return updateExistingCamera(existingCamera, vmsCamera, mappingRules, vms)
         }
 
         // 새 통합 카메라 문서 생성
-        return createNewUnifiedCamera(vmsCamera, channelID, mappingRules)
+        return createNewUnifiedCamera(vmsCamera, channelID, mappingRules, vms)
     }
 
     /**
@@ -174,20 +185,27 @@ class UnifiedCameraService(
     private suspend fun updateExistingCamera(
         existingCamera: UnifiedCamera,
         vmsCamera: Document,
-        mappingRules: FieldMappingDocument
+        mappingRules: FieldMappingDocument,
+        vms: Vms
     ): UnifiedCamera {
         // 기존 카메라를 문서로 변환
         val document = Document()
         val converter = mongoTemplate.converter
+
         converter.write(existingCamera, document)
 
         // 매핑 규칙에서 모든 변환 적용
         applyTransformations(vmsCamera, document, mappingRules.transformations)
 
         // 데이터베이스에서 문서 업데이트
+        val updatedUnifiedCamera = converter.read(UnifiedCamera::class.java, document)
+            .apply {
+                rtspUrl = vms.getRtspURL(vmsCamera["_id"] as String)
+                updatedAt = LocalDateTime.now().format()
+            }
         return mongoTemplate.findAndReplace(
             Query.query(Criteria.where("_id").`is`(existingCamera.id)),
-            converter.read(UnifiedCamera::class.java, document).apply { updatedAt = LocalDateTime.now().format() },
+            updatedUnifiedCamera,
             VMS_CAMERA_UNIFIED
         ).awaitFirst()
     }
@@ -203,16 +221,15 @@ class UnifiedCameraService(
     private suspend fun createNewUnifiedCamera(
         vmsCamera: Document,
         channelID: String,
-        mappingRules: FieldMappingDocument
+        mappingRules: FieldMappingDocument,
+        vms: Vms
     ): UnifiedCamera {
         log.info("Creating new unified camera for channel ID: {}", channelID)
-
-        val vms = vmsFactory.getService(mappingRules.vms)
 
         // 초기 통합 카메라 객체 생성
         val unifiedCamera = UnifiedCamera(
             id = UUID.randomUUID().toString(),
-            vms = mappingRules.vms,
+            vms = vms.type,
             channelID = channelID, // 채널 ID 직접 설정
             sourceReference = SourceReference(
                 collectionName = VMS_CAMERA,
@@ -278,9 +295,19 @@ class UnifiedCameraService(
      *
      * @return 모든 통합 카메라 객체 목록
      */
-    suspend fun getAllUnifiedCameras(): List<UnifiedCamera> {
+    suspend fun getAllUnifiedCameras(page: Int = 0, size: Int = 50): PageImpl<UnifiedCamera> {
         log.debug("Retrieving all unified cameras")
-        return mongoTemplate.findAll(UnifiedCamera::class.java, VMS_CAMERA_UNIFIED).asFlow().toList()
+
+        val pageRequest = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "channel_ID"))
+
+        val query = Query()
+            .with(pageRequest)
+
+        val pageResult = mongoTemplate.find(query, UnifiedCamera::class.java, VMS_CAMERA_UNIFIED).asFlow().toList()
+
+        val total = mongoTemplate.count(Query(), UnifiedCamera::class.java).awaitSingle()
+
+        return PageImpl(pageResult, pageRequest, total)
     }
 
     /**
@@ -289,12 +316,18 @@ class UnifiedCameraService(
      * @param vmsType 필터링할 VMS 유형
      * @return 지정된 VMS 유형에 대한 통합 카메라 객체 목록
      */
-    suspend fun getUnifiedCamerasByVmsType(vmsType: String): List<UnifiedCamera> {
+    suspend fun getUnifiedCamerasByVmsType(page: Int, size: Int, vmsType: String): PageImpl<UnifiedCamera> {
         log.debug("Retrieving unified cameras for VMS type: {}", vmsType)
-        return mongoTemplate.find(
-            Query.query(Criteria.where("vms").`is`(vmsType)),
-            UnifiedCamera::class.java,
-            VMS_CAMERA_UNIFIED
-        ).asFlow().toList()
+
+        val pageRequest = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "channel_ID"))
+
+        val vmsQuery = Query.query(Criteria.where("vms").`is`(vmsType))
+        val pageQuery = vmsQuery.with(pageRequest)
+
+        val pageResult = mongoTemplate.find(pageQuery, UnifiedCamera::class.java, VMS_CAMERA_UNIFIED).asFlow().toList()
+
+        val total = mongoTemplate.count(vmsQuery, UnifiedCamera::class.java).awaitSingle()
+
+        return PageImpl(pageResult, pageRequest, total)
     }
 }

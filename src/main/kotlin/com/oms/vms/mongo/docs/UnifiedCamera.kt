@@ -32,7 +32,7 @@ data class UnifiedCamera(
     @Field("http_port")
     val httpPort: Int = 0,                 // HTTP 포트
     @Field("rtsp_url")
-    val rtspUrl: String?,                   // RTSP URL
+    var rtspUrl: String?,                   // RTSP URL
 
     // 상태 정보
     @Field("is_enabled")

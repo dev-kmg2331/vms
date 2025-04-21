@@ -2,15 +2,14 @@ package com.oms.vms.manufacturers
 
 import com.oms.api.exception.ApiAccessException
 import com.oms.vms.Vms
-import com.oms.vms.endpoint.VmsCommonApiController
 import com.oms.vms.endpoint.VmsConfigUpdateRequest
 import com.oms.vms.mongo.docs.VMS_CONFIG
 import com.oms.vms.mongo.docs.VmsConfig
 import com.oms.vms.service.VmsSynchronizeService
 import format
 import kotlinx.coroutines.reactive.awaitFirstOrNull
+import kotlinx.coroutines.reactive.awaitLast
 import kotlinx.coroutines.reactor.awaitSingle
-import kotlinx.coroutines.runBlocking
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 import org.springframework.data.mongodb.core.ReactiveMongoTemplate
@@ -60,16 +59,16 @@ abstract class DefaultVms protected constructor(
         executor.initialize()
     }
 
-    override fun getVmsConfig(includeInactive: Boolean): VmsConfig = runBlocking {
-        val await = mongoTemplate.find(
+    override suspend fun getVmsConfig(includeInactive: Boolean): VmsConfig {
+        val vmsConfig = mongoTemplate.find(
             Query.query(Criteria.where("vms").`is`(type)),
             VmsConfig::class.java,
             VMS_CONFIG
         ).awaitFirstOrNull() ?: throw ApiAccessException(HttpStatus.BAD_REQUEST, "vms config not found.")
 
-        if (!includeInactive) await.apply { if (!this.isActive) throw ApiAccessException(HttpStatus.BAD_REQUEST, "vms config is not active.") }
+        if (!includeInactive) vmsConfig.apply { if (!this.isActive) throw ApiAccessException(HttpStatus.BAD_REQUEST, "vms config is not active.") }
 
-        await
+        return vmsConfig
     }
 
     @Transactional(rollbackFor = [ApiAccessException::class, Exception::class])

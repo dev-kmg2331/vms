@@ -3,10 +3,13 @@ package com.oms.vms.naiz
 import com.google.gson.JsonObject
 import com.mongodb.client.result.DeleteResult
 import com.oms.logging.gson.gson
+import com.oms.vms.WithMongoDBTestContainer
 import com.oms.vms.endpoint.VmsConfigUpdateRequest
 import com.oms.vms.manufacturers.naiz.NaizVms
 import com.oms.vms.mongo.docs.*
 import com.oms.vms.service.VmsSynchronizeService
+import com.oms.vms.testcontainers.MongoDBContainerDelegate
+import com.oms.vms.testcontainers.MongoDBContainerDelegate.mongoDBContainer
 import io.mockk.*
 import io.mockk.impl.annotations.MockK
 import io.mockk.junit5.MockKExtension
@@ -30,6 +33,8 @@ import org.springframework.data.mongodb.core.exists
 import org.springframework.data.mongodb.core.query.Criteria
 import org.springframework.data.mongodb.core.query.Query
 import org.springframework.test.context.ActiveProfiles
+import org.springframework.test.context.DynamicPropertyRegistry
+import org.springframework.test.context.DynamicPropertySource
 import org.springframework.web.reactive.function.client.WebClient
 import reactor.core.publisher.Flux
 import reactor.core.publisher.Mono
@@ -42,7 +47,7 @@ import java.util.*
 @ExtendWith(MockKExtension::class)
 @Execution(ExecutionMode.SAME_THREAD)
 @ActiveProfiles("test")
-class NaizVmsTest {
+class NaizVmsTest: WithMongoDBTestContainer {
 
     @Autowired
     private lateinit var vms: NaizVms
