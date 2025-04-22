@@ -268,6 +268,7 @@ class UnifiedCameraService(
         for (transformation in transformations) {
             try {
                 val doc: Document = getTransformationSource(transformation, sourceDoc)
+//                log.info("\ntarget: ${targetDoc.toJson()}\nsource: ${doc.toJson()}\ntransformation: ${gson.toJson(transformation)}")
                 transformation.transformationType.apply(doc, targetDoc, transformation)
             } catch (e: Exception) {
                 log.warn(

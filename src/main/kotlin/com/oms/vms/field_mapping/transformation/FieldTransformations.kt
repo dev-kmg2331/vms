@@ -1,7 +1,7 @@
 package com.oms.vms.field_mapping.transformation
 
-import com.fasterxml.jackson.annotation.JsonIgnore
 import com.oms.api.exception.ApiAccessException
+import com.oms.logging.gson.gson
 import org.bson.Document
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
@@ -22,6 +22,7 @@ interface Transformation {
 data class FieldTransformation(
     override var sourceField: String,
     val targetField: String,
+    var sourceDocumentField: String = targetField,
     val transformationType: TransformationType, // 변환 유형
     val parameters: Map<String, String> = mapOf() // 변환에 필요한 추가 매개변수
 ) : Transformation {
@@ -34,23 +35,26 @@ data class FieldTransformation(
         var doc = sourceDoc
 
         var fields = sourceField.split("-")
-        val lastField = fields.last()
+        this.sourceDocumentField = fields.last()
         fields = fields.subList(0, fields.size - 1)
 
         for (field in fields) {
-            doc = sourceDoc.get(field, Document::class.java) ?: throw ApiAccessException(
+            doc = doc.get(field, Document::class.java) ?: throw ApiAccessException(
                 HttpStatus.BAD_REQUEST,
-                "error while parsing source object. field : $sourceField"
+                "error while parsing source object. field : $field not found"
             )
         }
-
-        this.sourceField = lastField
 
         return doc
     }
 
     fun getSourceListDocument(sourceDoc: Document): Document {
-        val field = sourceField.split("[0]]").first()
+        val fields = sourceField.split("[0]]")
+
+        val field = fields.first()
+
+        this.sourceDocumentField = fields.last()
+
         return sourceDoc.getList(field, List::class.java)[0] as Document
     }
 }
@@ -70,8 +74,8 @@ enum class TransformationType {
             unifiedCamera: Document,
             transformation: FieldTransformation
         ) {
-            if (source[transformation.sourceField] != null) {
-                unifiedCamera[transformation.targetField] = source[transformation.sourceField]
+            if (source[transformation.sourceDocumentField] != null) {
+                unifiedCamera[transformation.targetField] = source[transformation.sourceDocumentField]
             }
         }
     },
@@ -82,7 +86,7 @@ enum class TransformationType {
             unifiedCamera: Document,
             transformation: FieldTransformation
         ) {
-            val sourceValue = source[transformation.sourceField]
+            val sourceValue = source[transformation.sourceDocumentField]
             if (sourceValue != null) {
                 val result = when (sourceValue) {
                     is Boolean -> sourceValue
@@ -96,7 +100,7 @@ enum class TransformationType {
                     else -> false
                 }
                 unifiedCamera[transformation.targetField] = result
-            } else throw ApiAccessException(HttpStatus.BAD_REQUEST, "source ${transformation.sourceField} is invalid")
+            } else throw ApiAccessException(HttpStatus.BAD_REQUEST, "source ${transformation.sourceDocumentField} is invalid")
         }
     },
     NUMBER_CONVERSION {
@@ -106,7 +110,8 @@ enum class TransformationType {
             transformation: FieldTransformation
         ) {
             try {
-                val sourceValue = source[transformation.sourceField]
+                log.info("\nsource: ${source.toJson()}\ntarget: ${unifiedCamera.toJson()}\ntransformation: ${gson.toJson(transformation)}")
+                val sourceValue = source[transformation.sourceDocumentField]
                 if (sourceValue != null) {
                     val result = when (sourceValue) {
                         is Number -> sourceValue
@@ -123,7 +128,7 @@ enum class TransformationType {
                     }
                 }
             } catch (e: Exception) {
-                throw ApiAccessException(HttpStatus.BAD_REQUEST, e, "source ${transformation.sourceField} is invalid")
+                throw ApiAccessException(HttpStatus.BAD_REQUEST, e, "source ${transformation.sourceDocumentField} is invalid")
             }
         }
     },
@@ -133,11 +138,11 @@ enum class TransformationType {
             unifiedCamera: Document,
             transformation: FieldTransformation
         ) {
-            val sourceValue = source[transformation.sourceField]
+            val sourceValue = source[transformation.sourceDocumentField]
             if (sourceValue != null) {
                 val format = transformation.parameters["format"] ?: "%s"
                 unifiedCamera[transformation.targetField] = String.format(format, sourceValue)
-            } else throw ApiAccessException(HttpStatus.BAD_REQUEST, "source ${transformation.sourceField} is invalid")
+            } else throw ApiAccessException(HttpStatus.BAD_REQUEST, "source ${transformation.sourceDocumentField} is invalid")
         }
     },
     DATE_FORMAT {
@@ -146,17 +151,17 @@ enum class TransformationType {
             unifiedCamera: Document,
             transformation: FieldTransformation
         ) {
-            val sourceValue = source[transformation.sourceField] ?: throw ApiAccessException(
+            val sourceValue = source[transformation.sourceDocumentField] ?: throw ApiAccessException(
                 HttpStatus.BAD_REQUEST,
-                "source ${transformation.sourceField} is invalid"
+                "source ${transformation.sourceDocumentField} is invalid"
             )
             val sourceFormat = transformation.parameters["sourceFormat"] ?: throw ApiAccessException(
                 HttpStatus.BAD_REQUEST,
-                "source date format ${transformation.sourceField} undefined"
+                "source date format ${transformation.sourceDocumentField} undefined"
             )
             val targetFormat = transformation.parameters["targetFormat"] ?: throw ApiAccessException(
                 HttpStatus.BAD_REQUEST,
-                "target date format ${transformation.sourceField} undefined"
+                "target date format ${transformation.sourceDocumentField} undefined"
             )
 
             try {

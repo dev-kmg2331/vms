@@ -46,9 +46,15 @@ data class UnifiedCamera(
     @Field("supports_audio")
     val supportsAudio: Boolean = false,     // 오디오 지원 여부
 
+    // 좌표(위치) 정보
+    @Field("latitude")
+    val latitude: Double = 0.0,             // 위도
+    @Field("longitude")
+    val longitude: Double = 0.0,            // 경도
+
     // 메타데이터
     @Field("vms")
-    val vms: String,                    // VMS 유형
+    val vms: String,                        // VMS 유형
     @Field("original_id")
     val originalId: String = "",            // 원본 VMS의 카메라 ID
     @Field("created_at")
