@@ -133,7 +133,6 @@ class VurixVmsMockTest: WithMongoDBTestContainer {
 
         // VMS 설정 모킹
         vmsConfig = VmsConfig(
-            id = UUID.randomUUID().toString(),
             username = "testUser",
             password = "testPassword",
             ip = "192.168.0.100",

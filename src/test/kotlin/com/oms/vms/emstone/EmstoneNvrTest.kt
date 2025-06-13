@@ -1,5 +1,6 @@
 package com.oms.vms.emstone
 
+import com.github.f4b6a3.tsid.TsidCreator
 import com.google.gson.JsonObject
 import com.oms.api.exception.ApiAccessException
 import com.oms.logging.gson.gson
@@ -197,7 +198,7 @@ class EmstoneNvrTest : WithMongoDBTestContainer {
 
         // VMS 카메라 정보 생성 및 저장
         val cameraDoc = Document()
-        cameraDoc["_id"] = UUID.randomUUID().toString()
+        cameraDoc["_id"] = TsidCreator.getTsid1024().toString()
         cameraDoc["vms"] = "emstone"
         cameraDoc["id"] = emstoneId
         cameraDoc["name"] = "Test Camera"

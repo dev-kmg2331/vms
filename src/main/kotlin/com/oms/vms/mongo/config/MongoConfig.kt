@@ -48,9 +48,10 @@ class MongoConfig(private val environment: Environment) : AbstractReactiveMongoC
         fun insertIndex(mongoTemplate: ReactiveMongoTemplate) {
             val indexOps = mongoTemplate.indexOps(DeprecatedUnifiedCamera::class.java)
 
-            val indexDefinition = Index(DeprecatedUnifiedCamera::deprecatedTime.name.camelToSnakeCase(), Sort.Direction.ASC)
-                .named(deprecatedTTLIndex)
-                .expire(7, TimeUnit.DAYS)
+            val indexDefinition =
+                Index(DeprecatedUnifiedCamera::deprecatedTime.name.camelToSnakeCase(), Sort.Direction.ASC)
+                    .named(deprecatedTTLIndex)
+                    .expire(7, TimeUnit.DAYS)
 
             indexOps.ensureIndex(indexDefinition).block()
         }
@@ -76,18 +77,22 @@ class MongoConfig(private val environment: Environment) : AbstractReactiveMongoC
     }
 }
 
-fun Document.asResponse(): Document {
+private val documentResponseExcludedKeys = listOf("_id", "created_at", "updated_at", "_class", "source_reference")
+
+fun Document.toResponse(): Document {
     this.forEach { (k, v) ->
         if (v is Document) {
-            this[k] = v.asResponse()
+            this[k] = v.toResponse()
         }
     }
 
-    this.remove("_id")
-    this.remove("created_at")
-    this.remove("updated_at")
-    this.remove("_class")
-    this.remove("source_reference")
+    documentResponseExcludedKeys.forEach { this.remove(it) }
 
     return this
+}
+
+fun ReactiveMongoTemplate.toDoc(any: Any): Document {
+    val document = Document()
+    this.converter.write(any, document)
+    return document
 }

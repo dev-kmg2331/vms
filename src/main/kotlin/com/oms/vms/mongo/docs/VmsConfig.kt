@@ -1,11 +1,9 @@
 package com.oms.vms.mongo.docs
 
-import format
 import org.springframework.data.annotation.Id
 import org.springframework.data.mongodb.core.mapping.Document
 import org.springframework.data.mongodb.core.mapping.Field
 import java.time.LocalDateTime
-import java.util.*
 
 /**
  * VMS 설정 정보 도큐먼트
@@ -15,8 +13,17 @@ import java.util.*
 data class VmsConfig(
     @Id
     @Field("_id")
-    val id: String = UUID.randomUUID().toString(),
+    override val id: String = BaseDoc.defaultId(),
 
+    @Field("ref_id")
+    override val refId: String = BaseDoc.defaultRefId(),
+
+    @Field("created_at")
+    override val createdAt: String = BaseDoc.defaultCreatedAt(),
+
+    @Field("updated_at")
+    override var updatedAt: String = BaseDoc.defaultUpdatedAt(),
+    
     // 기본 인증 및 연결 정보
     @Field("username")
     var username: String,        // VMS 접속 계정
@@ -39,14 +46,7 @@ data class VmsConfig(
     @field:Transient
     @Field("additional_info_keys")
     val additionalInfoKeys: Set<String> = additionalInfo.map { it.key }.toSet(),
-
-    // 메타데이터
-    @Field("created_at")
-    var createdAt: String = LocalDateTime.now().format(),
-    @Field("updated_at")
-    var updatedAt: String = LocalDateTime.now().format(),
-
-    ) {
+) : BaseDoc {
     fun getAdditionalInfo(key: String) = this.additionalInfo.find { it.key == key }?.value
         ?: throw IllegalArgumentException("No additional info found with key $key")
 }

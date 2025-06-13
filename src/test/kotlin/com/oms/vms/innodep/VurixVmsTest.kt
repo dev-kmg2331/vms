@@ -42,7 +42,6 @@ class VurixVmsTest : WithMongoDBTestContainer {
     fun beforeEach(): Unit = runBlocking {
         mongoTemplate.save(
             VmsConfig(
-                id = UUID.randomUUID().toString(),
                 username = "sdk",
                 password = "Innodep1@",
                 ip = "211.171.190.220",

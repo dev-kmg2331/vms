@@ -47,9 +47,23 @@ dependencies {
 
     // MongoDB
     implementation 'org.springframework.boot:spring-boot-starter-data-mongodb-reactive'
+    implementation 'org.mongodb:bson'
 
     // Postgresql
     runtimeOnly 'org.postgresql:postgresql'
+
+    // TSID (Time ordered UUID creator)
+    implementation 'com.github.f4b6a3:tsid-creator:5.2.6'
+
+    // Jackson Kotlin
+    implementation 'com.fasterxml.jackson.module:jackson-module-kotlin:2.14.0'
+
+    // Excel 파일 처리를 위한 Apache POI 의존성
+    implementation 'org.apache.poi:poi:5.2.3'            // 기본 POI 라이브러리
+    implementation 'org.apache.poi:poi-ooxml:5.2.3'      // .xlsx 파일 지원
+
+    // JNA
+    implementation 'net.java.dev.jna:jna:5.17.0'
 
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     testImplementation 'io.projectreactor:reactor-test'

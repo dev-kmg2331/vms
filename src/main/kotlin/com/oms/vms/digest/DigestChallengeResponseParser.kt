@@ -1,7 +1,6 @@
 package com.oms.vms.digest
 
 import com.oms.api.exception.ApiAccessException
-import org.springframework.http.HttpMethod
 import org.springframework.http.HttpStatus
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest

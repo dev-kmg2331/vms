@@ -22,7 +22,7 @@ interface Transformation {
 data class FieldTransformation(
     override var sourceField: String,
     val targetField: String,
-    var sourceDocumentField: String = targetField,
+    var sourceDocumentField: String = sourceField,
     val transformationType: TransformationType, // 변환 유형
     val parameters: Map<String, String> = mapOf() // 변환에 필요한 추가 매개변수
 ) : Transformation {
@@ -49,13 +49,13 @@ data class FieldTransformation(
     }
 
     fun getSourceListDocument(sourceDoc: Document): Document {
-        val fields = sourceField.split("[0]]")
+        val fields = sourceField.split("[0]")
 
         val field = fields.first()
 
         this.sourceDocumentField = fields.last()
 
-        return sourceDoc.getList(field, List::class.java)[0] as Document
+        return sourceDoc.getList(field, Document::class.java)[0] as Document
     }
 }
 
@@ -71,11 +71,11 @@ enum class TransformationType {
     DEFAULT_CONVERSION {
         override fun apply(
             source: Document,
-            unifiedCamera: Document,
+            target: Document,
             transformation: FieldTransformation
         ) {
             if (source[transformation.sourceDocumentField] != null) {
-                unifiedCamera[transformation.targetField] = source[transformation.sourceDocumentField]
+                target[transformation.targetField] = source[transformation.sourceDocumentField]
             }
         }
     },
@@ -83,10 +83,11 @@ enum class TransformationType {
     BOOLEAN_CONVERSION {
         override fun apply(
             source: Document,
-            unifiedCamera: Document,
+            target: Document,
             transformation: FieldTransformation
         ) {
             val sourceValue = source[transformation.sourceDocumentField]
+            log.info("source value: $sourceValue, targetField : $target")
             if (sourceValue != null) {
                 val result = when (sourceValue) {
                     is Boolean -> sourceValue
@@ -99,18 +100,19 @@ enum class TransformationType {
                     is Number -> sourceValue.toInt() != 0
                     else -> false
                 }
-                unifiedCamera[transformation.targetField] = result
+                target[transformation.targetField] = result
+                log.info("source value: $sourceValue, targetField : $target, result: $result")
             } else throw ApiAccessException(HttpStatus.BAD_REQUEST, "source ${transformation.sourceDocumentField} is invalid")
         }
     },
     NUMBER_CONVERSION {
         override fun apply(
             source: Document,
-            unifiedCamera: Document,
+            target: Document,
             transformation: FieldTransformation
         ) {
             try {
-                log.info("\nsource: ${source.toJson()}\ntarget: ${unifiedCamera.toJson()}\ntransformation: ${gson.toJson(transformation)}")
+                log.debug("\nsource: ${source.toJson()}\ntarget: ${target.toJson()}\ntransformation: ${gson.toJson(transformation)}")
                 val sourceValue = source[transformation.sourceDocumentField]
                 if (sourceValue != null) {
                     val result = when (sourceValue) {
@@ -118,14 +120,16 @@ enum class TransformationType {
                         is String -> try {
                             if (sourceValue.contains(".")) sourceValue.toDouble() else sourceValue.toInt()
                         } catch (e: Exception) {
+                            log.error("failed to parse source $sourceValue to ${target.toJson()}", e)
                             null
                         }
 
                         else -> null
                     }
                     if (result != null) {
-                        unifiedCamera[transformation.targetField] = result
+                        target[transformation.targetField] = result
                     }
+                    log.debug("result ${target.toJson()}: $result")
                 }
             } catch (e: Exception) {
                 throw ApiAccessException(HttpStatus.BAD_REQUEST, e, "source ${transformation.sourceDocumentField} is invalid")
@@ -135,20 +139,20 @@ enum class TransformationType {
     STRING_FORMAT {
         override fun apply(
             source: Document,
-            unifiedCamera: Document,
+            target: Document,
             transformation: FieldTransformation
         ) {
             val sourceValue = source[transformation.sourceDocumentField]
             if (sourceValue != null) {
                 val format = transformation.parameters["format"] ?: "%s"
-                unifiedCamera[transformation.targetField] = String.format(format, sourceValue)
+                target[transformation.targetField] = String.format(format, sourceValue)
             } else throw ApiAccessException(HttpStatus.BAD_REQUEST, "source ${transformation.sourceDocumentField} is invalid")
         }
     },
     DATE_FORMAT {
         override fun apply(
             source: Document,
-            unifiedCamera: Document,
+            target: Document,
             transformation: FieldTransformation
         ) {
             val sourceValue = source[transformation.sourceDocumentField] ?: throw ApiAccessException(
@@ -184,7 +188,7 @@ enum class TransformationType {
                 }
 
                 if (result != null) {
-                    unifiedCamera[transformation.targetField] = result
+                    target[transformation.targetField] = result
                 }
             } catch (e: Exception) {
                 log.error("exception in datetime transformation: ${e.message}")
@@ -203,7 +207,7 @@ enum class TransformationType {
      */
     abstract fun apply(
         source: Document,
-        unifiedCamera: Document,
+        target: Document,
         transformation: FieldTransformation
     )
 }

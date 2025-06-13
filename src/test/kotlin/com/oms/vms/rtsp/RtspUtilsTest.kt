@@ -186,7 +186,7 @@ class RtspUtilsTest {
         )
 
         // When
-        val result = rtspTCPConnector.connectRTSP(url, RTSPMethod.DESCRIBE)
+        val result = rtspTCPConnector.getSDPContent(url)
 
         // Then
         assertEquals(sdpContent, result)
@@ -210,7 +210,7 @@ class RtspUtilsTest {
         )
 
         // When
-        val result = rtspTCPConnector.connectRTSP(url, RTSPMethod.DESCRIBE)
+        val result = rtspTCPConnector.getSDPContent(url)
 
         // Then
         assertEquals(sdpContent, result)
@@ -229,7 +229,7 @@ class RtspUtilsTest {
 
         // When & Then
         assertThrows<ApiAccessException> {
-            rtspTCPConnector.connectRTSP(url, RTSPMethod.DESCRIBE)
+            rtspTCPConnector.getSDPContent(url)
         }
     }
 
@@ -245,7 +245,7 @@ class RtspUtilsTest {
 
         // When & Then
         assertThrows<ApiAccessException> {
-            rtspTCPConnector.connectRTSP(url, RTSPMethod.DESCRIBE)
+            rtspTCPConnector.getSDPContent(url)
         }
     }
 
@@ -260,7 +260,7 @@ class RtspUtilsTest {
 
         // When & Then
         assertThrows<IOException> {
-            rtspTCPConnector.connectRTSP(url, RTSPMethod.DESCRIBE)
+            rtspTCPConnector.getSDPContent(url)
         }
     }
 

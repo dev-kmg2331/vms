@@ -6,7 +6,7 @@ import com.oms.vms.mongo.docs.FieldMappingDocument
 import com.oms.vms.field_mapping.service.FieldMappingService
 import com.oms.vms.field_mapping.transformation.FieldTransformation
 import com.oms.vms.field_mapping.transformation.TransformationType
-import com.oms.vms.mongo.config.asResponse
+import com.oms.vms.mongo.config.toResponse
 import com.oms.vms.service.VmsSynchronizeService
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.Parameter
@@ -373,7 +373,7 @@ class FieldMappingController(
         @PathVariable vmsType: String
     ): ResponseEntity<*> {
         return try {
-            return vmsSynchronizeService.analyzeVmsFieldStructure(vmsType).let { ResponseUtil.success(it.asResponse()) }
+            return vmsSynchronizeService.analyzeVmsFieldStructure(vmsType).let { ResponseUtil.success(it.toResponse()) }
         } catch (e: Exception) {
             log.error("Error analyzing field structure for {} VMS type: {}", vmsType, e.message, e)
             ResponseUtil.fail(HttpStatus.INTERNAL_SERVER_ERROR, "unknown error in analyzing field structure")
@@ -397,7 +397,7 @@ class FieldMappingController(
     )
     suspend fun analyzeUnifiedFieldStructure(): ResponseEntity<*> {
         return try {
-            return vmsSynchronizeService.analyzeUnifiedFieldStructure().let { ResponseUtil.success(it.asResponse()) }
+            return vmsSynchronizeService.analyzeUnifiedFieldStructure().let { ResponseUtil.success(it.toResponse()) }
         } catch (e: Exception) {
             log.error("Error analyzing field structure for unified camera.", e)
             ResponseUtil.fail(HttpStatus.INTERNAL_SERVER_ERROR, "unknown error in analyzing field structure")

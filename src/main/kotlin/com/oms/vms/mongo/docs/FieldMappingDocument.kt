@@ -3,11 +3,9 @@ package com.oms.vms.mongo.docs
 import com.fasterxml.jackson.annotation.JsonInclude
 import com.oms.vms.field_mapping.transformation.ChannelIdTransFormation
 import com.oms.vms.field_mapping.transformation.FieldTransformation
-import format
 import org.springframework.data.annotation.Id
 import org.springframework.data.mongodb.core.mapping.Document
-import java.time.LocalDateTime
-import java.util.*
+import org.springframework.data.mongodb.core.mapping.Field
 
 /**
  * VMS 매핑 규칙 데이터베이스 문서
@@ -17,11 +15,20 @@ import java.util.*
 @JsonInclude(JsonInclude.Include.NON_NULL)
 data class FieldMappingDocument(
     @Id
-    val id: String = UUID.randomUUID().toString(),
+    @Field("_id")
+    override val id: String = BaseDoc.defaultId(),
+
+    @Field("ref_id")
+    override val refId: String = BaseDoc.defaultRefId(),
+
+    @Field("created_at")
+    override val createdAt: String = BaseDoc.defaultCreatedAt(),
+
+    @Field("updated_at")
+    override var updatedAt: String = BaseDoc.defaultUpdatedAt(),
+
     val vms: String,                       // VMS 유형 (dahua, emstone, naiz 등)
     var channelIdTransformation: ChannelIdTransFormation? = null,
     val transformations: MutableList<FieldTransformation> = mutableListOf(), // 특수 변환 룰
     val description: String? = null,           // 매핑 설명
-    val createdAt: String = LocalDateTime.now().format(),
-    val updatedAt: String = LocalDateTime.now().format()
-)
+) : BaseDoc

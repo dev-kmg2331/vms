@@ -7,6 +7,7 @@ import com.oms.vms.VmsFactory
 import com.oms.vms.VmsType
 import com.oms.vms.mongo.docs.VmsAdditionalInfo
 import com.oms.vms.mongo.docs.VmsConfig
+import com.oms.vms.mongo.docs.toDocumentResponse
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.Parameter
 import io.swagger.v3.oas.annotations.media.ArraySchema
@@ -62,7 +63,7 @@ class VmsCommonApiController(private val vmsFactory: VmsFactory) {
     ): ResponseEntity<*> {
         return try {
             val vms = vmsFactory.getService(vmsType)
-            val config = vms.getVmsConfig()
+            val config = vms.getVmsConfig().toDocumentResponse()
             log.info("Successfully retrieved configuration for {} VMS", vmsType)
             ResponseUtil.success(config)
         } catch (e: Exception) {
@@ -98,7 +99,7 @@ class VmsCommonApiController(private val vmsFactory: VmsFactory) {
                 vmsFactory.getAllServices().map { vms ->
                     async {
                         try {
-                            vms.getVmsConfig(includeInactive = true)
+                            vms.getVmsConfig(includeInactive = true).toDocumentResponse()
                         } catch (e: ApiAccessException) {
                             // 개별 VMS 설정 조회 실패 시 null 반환하고 계속 진행
                             log.warn("Failed to retrieve configuration for {} VMS: {}", vms.type, e.message)
@@ -148,7 +149,7 @@ class VmsCommonApiController(private val vmsFactory: VmsFactory) {
             val serviceName = VmsType.findByServiceName(vmsType).serviceName
             val vms = vmsFactory.getService(serviceName)
 
-            val updatedConfig = vms.saveVmsConfig(vmsConfigRequest)
+            val updatedConfig = vms.saveVmsConfig(vmsConfigRequest).toDocumentResponse()
             log.info("Successfully updated configuration for {} VMS", vmsType)
 
             ResponseUtil.success(updatedConfig)
@@ -192,7 +193,7 @@ class VmsCommonApiController(private val vmsFactory: VmsFactory) {
     ): ResponseEntity<*> {
         return try {
             val vms = vmsFactory.getService(vmsType)
-            val updatedConfig = vms.setVmsConfigActive(active)
+            val updatedConfig = vms.setVmsConfigActive(active).toDocumentResponse()
 
             log.info("Successfully {} {} VMS", if (active) "activated" else "deactivated", vmsType)
 

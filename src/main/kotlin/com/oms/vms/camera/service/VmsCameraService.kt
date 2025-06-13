@@ -1,5 +1,6 @@
 package com.oms.vms.camera.service
 
+import com.oms.vms.mongo.config.toResponse
 import com.oms.vms.mongo.docs.VMS_CAMERA
 import com.oms.vms.mongo.docs.VMS_RAW_JSON
 import kotlinx.coroutines.flow.toList
@@ -46,6 +47,7 @@ class VmsCameraService(
         log.info("Retrieving all VMS cameras")
         
         return mongoTemplate.findAll(Document::class.java, VMS_CAMERA)
+            .map { it.toResponse() }
             .asFlow()
             .toList()
     }
@@ -61,6 +63,7 @@ class VmsCameraService(
         
         val query = Query.query(Criteria.where("_id").`is`(cameraId))
         return mongoTemplate.findOne(query, Document::class.java, VMS_CAMERA)
+            .map { it.toResponse() }
             .asFlow()
             .toList()
             .firstOrNull()
@@ -77,6 +80,7 @@ class VmsCameraService(
         
         val query = Query.query(Criteria.where("vms").`is`(vmsType))
         return mongoTemplate.find(query, Document::class.java, VMS_RAW_JSON)
+            .map { it.toResponse() }
             .asFlow()
             .toList()
     }
@@ -90,6 +94,7 @@ class VmsCameraService(
         log.info("Retrieving all raw JSON data")
         
         return mongoTemplate.findAll(Document::class.java, VMS_RAW_JSON)
+            .map { it.toResponse() }
             .asFlow()
             .toList()
     }

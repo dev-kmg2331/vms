@@ -1,5 +1,6 @@
 package com.oms.vms.naiz
 
+import com.github.f4b6a3.tsid.TsidCreator
 import com.google.gson.JsonObject
 import com.mongodb.client.result.DeleteResult
 import com.oms.logging.gson.gson
@@ -121,7 +122,7 @@ class NaizVmsTest: WithMongoDBTestContainer {
         } returns Mono.just(true)
 
         val mockDocument = Document()
-        mockDocument["_id"] = UUID.randomUUID().toString()
+        mockDocument["_id"] = TsidCreator.getTsid1024().toString()
 
         every { mongoTemplateMock.insert(any<Document>(), any<String>()) } returns Mono.just(mockDocument)
 

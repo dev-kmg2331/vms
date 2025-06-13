@@ -1,5 +1,6 @@
 package com.oms.vms.camera
 
+import com.oms.vms.WithMongoDBTestContainer
 import com.oms.vms.field_mapping.endpoint.TransformationRequest
 import com.oms.vms.field_mapping.service.FieldMappingService
 import com.oms.vms.field_mapping.transformation.FieldTransformation
@@ -11,6 +12,7 @@ import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.impl.annotations.MockK
 import io.mockk.junit5.MockKExtension
+import io.mockk.spyk
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.BeforeEach
@@ -20,7 +22,9 @@ import org.junit.jupiter.api.extension.ExtendWith
 import org.junit.jupiter.api.parallel.Execution
 import org.junit.jupiter.api.parallel.ExecutionMode
 import org.slf4j.LoggerFactory
+import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
+import org.springframework.data.mongodb.core.ReactiveMongoTemplate
 import org.springframework.test.context.ActiveProfiles
 import java.time.LocalDateTime
 import java.util.*
@@ -29,25 +33,28 @@ import java.util.*
 @ExtendWith(MockKExtension::class)
 @Execution(ExecutionMode.SAME_THREAD)
 @ActiveProfiles("test")
-class FieldMappingServiceTest {
+class FieldMappingServiceTest: WithMongoDBTestContainer {
 
-    private val log = LoggerFactory.getLogger(this::class.java)
+    @Autowired
+    private lateinit var mongoTemplate: ReactiveMongoTemplate
 
-    @MockK
     private lateinit var fieldMappingRepository: FieldMappingRepository
+    private lateinit var fieldMappingService: FieldMappingService
 
-    private val vmsType = "test-vms"
     private lateinit var testMappingDocument: FieldMappingDocument
     private lateinit var testTransformation: FieldTransformation
 
-    private lateinit var fieldMappingService: FieldMappingService
+    private val log = LoggerFactory.getLogger(this::class.java)
+
+    private val vmsType = "test"
 
 
     @BeforeEach
     fun setup() {
+        fieldMappingRepository = spyk(FieldMappingRepository(mongoTemplate))
+
         // 테스트용 매핑 문서 생성
         testMappingDocument = FieldMappingDocument(
-            id = UUID.randomUUID().toString(),
             vms = vmsType,
             transformations = mutableListOf(),
             description = "Test mapping document",
@@ -266,6 +273,6 @@ class FieldMappingServiceTest {
         assertEquals(0, result.transformations.size, "Should have no transformations")
 
         coVerify(exactly = 1) { fieldMappingRepository.deleteMappingRules(vmsType) }
-        coVerify(exactly = 1) { fieldMappingRepository.getMappingRules(vmsType) }
+        coVerify(exactly = 1) { fieldMappingRepository.createDefaultMapping(vmsType) }
     }
 }

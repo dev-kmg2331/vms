@@ -1,8 +1,9 @@
 package com.oms.vms.service
 
-import com.google.gson.JsonElement
+import com.github.f4b6a3.tsid.TsidCreator
 import com.google.gson.JsonObject
 import com.oms.api.exception.ApiAccessException
+import com.oms.vms.mongo.config.toDoc
 import com.oms.vms.mongo.docs.*
 import format
 import kotlinx.coroutines.reactive.awaitFirstOrNull
@@ -11,13 +12,11 @@ import kotlinx.coroutines.reactor.awaitSingleOrNull
 import org.bson.Document
 import org.slf4j.LoggerFactory
 import org.springframework.data.mongodb.core.ReactiveMongoTemplate
-import org.springframework.data.mongodb.core.exists
 import org.springframework.data.mongodb.core.query.Criteria
 import org.springframework.data.mongodb.core.query.Query
 import org.springframework.http.HttpStatus
 import org.springframework.stereotype.Service
 import java.time.LocalDateTime
-import java.util.*
 
 /**
  * VMS 동기화 서비스 - VMS 구현 간의 공통 기능을 제공합니다.
@@ -33,9 +32,13 @@ class VmsSynchronizeService(
      */
     private fun createRawResponseDocument(response: String, uri: String, vmsType: String): Document {
         val doc = Document()
-        val rawData: Any = try { Document.parse(response) } catch (e: Exception) { response }
+        val rawData: Any = try {
+            Document.parse(response)
+        } catch (e: Exception) {
+            response
+        }
 
-        doc["_id"] = UUID.randomUUID().toString()
+        doc["_id"] = TsidCreator.getTsid1024().toString()
         doc["created_at"] = LocalDateTime.now().format()
         doc["raw_data"] = rawData
         doc["vms"] = vmsType
@@ -48,7 +51,7 @@ class VmsSynchronizeService(
      */
     private fun createCameraDocument(jsonObj: JsonObject, vmsType: String): Document {
         return Document.parse(jsonObj.toString()).apply {
-            this["_id"] = UUID.randomUUID().toString()
+            this["_id"] = TsidCreator.getTsid1024().toString()
             this["created_at"] = LocalDateTime.now().format()
             this["vms"] = vmsType
         }
@@ -110,18 +113,14 @@ class VmsSynchronizeService(
     suspend fun analyzeUnifiedFieldStructure(): Document {
         val emptyUnifiedCamera = UnifiedCamera(
             vms = "",
-            rtspUrl = "",
+            rtsp = "",
             sourceReference = SourceReference(
                 collectionName = "",
                 documentId = ""
             ),
-            createdAt = LocalDateTime.now().format(),
-            updatedAt = LocalDateTime.now().format()
         )
 
-        val document = Document()
-
-        mongoTemplate.converter.write(emptyUnifiedCamera, document)
+        val document = mongoTemplate.toDoc(emptyUnifiedCamera)
 
         val structure = analyzeDocumentStructure(document)
 
@@ -160,37 +159,36 @@ class VmsSynchronizeService(
             throw ApiAccessException(HttpStatus.BAD_REQUEST, "No sample camera found for $vmsType VMS")
         }
 
-        val document = mongoTemplate.find(
+        val fieldAnalyze = mongoTemplate.find(
             Query.query(Criteria.where("vms").`is`(vmsType)),
-            Document::class.java,
+            FieldAnalyze::class.java,
             VMS_FIELD_ANALYSIS
         ).awaitFirstOrNull()
 
         val analyzeDocumentStructure = analyzeDocumentStructure(sampleCamera)
 
-        if (document == null) {
+        val res = if (fieldAnalyze == null) {
             // 분석 문서 생성
-            val fieldsDocument = Document()
-            fieldsDocument["_id"] = UUID.randomUUID().toString()
-            fieldsDocument["vms"] = vmsType
-            fieldsDocument["analyzed_at"] = LocalDateTime.now().format()
-            fieldsDocument["fields"] = analyzeDocumentStructure
-
+            val newFieldAnalyze = FieldAnalyze(
+                fields = analyzeDocumentStructure,
+                vms = vmsType
+            )
             log.info("Saving new field structure analysis for {} VMS", vmsType)
 
-            return mongoTemplate.save(fieldsDocument, VMS_FIELD_ANALYSIS).awaitSingle()
+            mongoTemplate.save(newFieldAnalyze).awaitSingle()
         } else {
-            document["analyzed_at"] = LocalDateTime.now().format()
-            document["fields"] = analyzeDocumentStructure
+            fieldAnalyze.analyzedAt = LocalDateTime.now().format()
+            fieldAnalyze.fields = analyzeDocumentStructure
 
             log.info("Updating field structure analysis for {} VMS", vmsType)
 
-            return mongoTemplate.findAndReplace(
+            mongoTemplate.findAndReplace(
                 Query.query(Criteria.where("vms").`is`(vmsType)),
-                document,
-                VMS_FIELD_ANALYSIS
+                fieldAnalyze
             ).awaitSingle()
         }
+
+        return mongoTemplate.toDoc(res)
     }
 
     /**

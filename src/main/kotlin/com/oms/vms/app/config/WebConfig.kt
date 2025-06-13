@@ -1,6 +1,5 @@
 package com.oms.vms.app.config
 
-import com.oms.logging.config.RequestLoggingConfig
 import com.oms.logging.filter.RequestLoggingFilter
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
@@ -16,8 +15,6 @@ class WebConfig : WebMvcConfigurer {
         registry.addMapping("/**")
             .allowedOrigins("*")
             .allowedMethods("GET", "POST", "PUT", "DELETE")
-            .allowedHeaders("Authorization", "Content-Type")
-            .exposedHeaders("Custom-Header")
             .allowCredentials(false)
             .maxAge(3600)
     }

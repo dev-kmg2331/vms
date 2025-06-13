@@ -1,11 +1,14 @@
 package com.oms.vms.rtsp
 
 import com.oms.api.exception.ApiAccessException
+import com.oms.logging.gson.gson
 import com.oms.vms.digest.DigestChallengeResponseParser
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
 import java.io.*
+import java.net.InetSocketAddress
 import java.net.Socket
+
 
 /**
  * Socket을 사용하여 RTSP URL에서 SDP 데이터를 파싱하는 유틸리티 클래스
@@ -13,6 +16,7 @@ import java.net.Socket
 object RtspTCPConnector {
     private val log = LoggerFactory.getLogger(this::class.java)
     private const val DEFAULT_RTSP_PORT = 554
+    private const val SOCKET_TIMEOUT_MILLS = 1000
     private const val CRLF = "\r\n"
 
 
@@ -25,7 +29,7 @@ object RtspTCPConnector {
      * @throws IOException Socket 연결 또는 파싱 중 오류가 발생한 경우
      */
     @Throws(IOException::class)
-    fun connectRTSP(url: String, method: RTSPMethod): String {
+    fun getSDPContent(url: String): String {
         log.info("Trying to parse SDP from RTSP URL: $url")
 
         // 인증 정보 추출
@@ -44,65 +48,73 @@ object RtspTCPConnector {
         try {
             // 초기 DESCRIBE 요청 시도
             log.info("Attempting initial DESCRIBE request")
+            val rtspMethod = RTSPMethod.OPTIONS
             val (statusCode, response, contentLength) = sendRequest(
-                method,
+                rtspMethod,
                 rtspUrl,
                 null,
                 inputStream,
                 outputStream
             )
 
-            // 401 Unauthorized 응답 처리 (Digest Authentication 필요)
-            if (statusCode == 401) {
-                log.info("Received 401 Unauthorized, attempting Digest Authentication")
+            when (statusCode) {
+                // 401 Unauthorized 응답 처리 (Digest Authentication 필요)
+                401 -> {
+                    log.info("Received 401 Unauthorized, attempting Digest Authentication")
 
-                val (username, password) = credentials ?: throw ApiAccessException(
-                    HttpStatus.INTERNAL_SERVER_ERROR,
-                    "no credentials found from rtsp url: $url"
-                )
+                    val (username, password) = credentials ?: throw ApiAccessException(
+                        HttpStatus.INTERNAL_SERVER_ERROR,
+                        "no credentials found from rtsp url: $url"
+                    )
 
-                // WWW-Authenticate 헤더에서 인증 정보 추출
-                val wwwAuthHeader = extractWwwAuthenticateHeader(response)
-                    ?: throw IOException("Failed to parse Digest authentication parameters")
+                    // WWW-Authenticate 헤더에서 인증 정보 추출
+                    val wwwAuthHeader = extractWwwAuthenticateHeader(response)
+                        ?: throw IOException("Failed to parse Digest authentication parameters. url: $rtspUrl")
 
-                // DigestChallengeResponseParser 를 사용하여 인증 처리
-                val digestParams = DigestChallengeResponseParser.parseDigestChallenge(wwwAuthHeader)
+                    // DigestChallengeResponseParser 를 사용하여 인증 처리
+                    val digestParams = DigestChallengeResponseParser.parseDigestChallenge(wwwAuthHeader)
 
-                if (digestParams.isEmpty()) {
-                    log.error("WWW-Authenticate header not found in 401 response or no credentials provided")
-                    throw IOException("WWW-Authenticate header not found or no credentials provided")
+                    if (digestParams.isEmpty()) {
+                        log.error("WWW-Authenticate header not found in 401 response or no credentials provided. url: $rtspUrl")
+                        throw IOException("WWW-Authenticate header not found or no credentials provided")
+                    }
+
+                    // Digest 인증을 사용하여 다시 요청
+                    log.info("Sending request with Digest Authentication")
+                    val digestAuthHeader = DigestChallengeResponseParser.createDigestAuthHeader(
+                        rtspMethod.name, username, password, digestParams, rtspUrl
+                    )
+
+                    val (digestStatusCode, _, newContentLength) =
+                        sendRequest(RTSPMethod.DESCRIBE, rtspUrl, digestAuthHeader, inputStream, outputStream)
+
+                    if (digestStatusCode == 200 && newContentLength > 0) {
+                        // SDP 콘텐츠 읽기
+                        val content = readContent(inputStream, newContentLength)
+
+                        return content
+                    } else {
+                        log.error("Failed to authenticate with Digest Authentication, status code: $digestStatusCode. url: $rtspUrl")
+                        throw IOException("Authentication failed with status code: $digestStatusCode")
+                    }
                 }
-
-                // Digest 인증을 사용하여 다시 요청
-                log.info("Sending request with Digest Authentication")
-                val digestAuthHeader = DigestChallengeResponseParser.createDigestAuthHeader(
-                    method.name, username, password, digestParams, rtspUrl
-                )
-
-                val (digestStatusCode, _, newContentLength) =
-                    sendRequest(method, rtspUrl, digestAuthHeader, inputStream, outputStream)
-
-                if (digestStatusCode == 200 && newContentLength > 0) {
-                    // SDP 콘텐츠 읽기
-                    val content = readContent(inputStream, newContentLength)
-
+                // 인증 없이 성공
+                200 -> {
+                    if (contentLength > 0) {
+                        throw ApiAccessException(
+                            HttpStatus.INTERNAL_SERVER_ERROR,
+                            "Failed to connect RTSP, status code: $statusCode, content-length: $contentLength. url: $rtspUrl"
+                        )
+                    }
+                    val content = readContent(inputStream, contentLength)
                     return content
-                } else {
-                    log.error("Failed to authenticate with Digest Authentication, status code: $digestStatusCode")
-                    throw IOException("Authentication failed with status code: $digestStatusCode")
                 }
+                // 예외 발생
+                else -> throw ApiAccessException(
+                    HttpStatus.INTERNAL_SERVER_ERROR,
+                    "Failed to connect RTSP, status code: $statusCode. url: $rtspUrl"
+                )
             }
-
-            // 인증 없이 성공한 경우
-            if (statusCode == 200 && contentLength > 0) {
-                val content = readContent(inputStream, contentLength)
-                return content
-            }
-
-            throw ApiAccessException(
-                HttpStatus.INTERNAL_SERVER_ERROR,
-                "Failed to connect RTSP, status code: $statusCode"
-            )
         } catch (e: Exception) {
             log.error("Failed to connect RTSP.", e)
             throw ApiAccessException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to connect RTSP.")
@@ -164,7 +176,7 @@ object RtspTCPConnector {
      * @param contentLength 콘텐츠 길이
      * @return SDP 콘텐츠 문자열
      */
-    fun readContent(inputStream: BufferedReader, contentLength: Int): String {
+    private fun readContent(inputStream: BufferedReader, contentLength: Int): String {
         log.info("Reading SDP content of length $contentLength")
         val buffer = CharArray(contentLength)
 
@@ -279,7 +291,12 @@ object RtspTCPConnector {
         return Triple(host, port, path)
     }
 
-    fun createSocket(host: String, port: Int): Socket = Socket(host, port)
+    fun createSocket(host: String, port: Int): Socket {
+        val socket = Socket()
+        socket.connect(InetSocketAddress(host, port), SOCKET_TIMEOUT_MILLS)
+        return socket
+    }
+
     fun createBufferedReader(inputStream: InputStream): BufferedReader = BufferedReader(InputStreamReader(inputStream))
     fun createPrintWriter(outputStream: OutputStream): PrintWriter = PrintWriter(outputStream, true)
 }
@@ -294,11 +311,10 @@ object RtspSdpParser {
      * @param sdpContent SDP 문자열 데이터
      * @return SDP 필드를 키-값 쌍으로 담은 Map 객체
      */
-    fun parseSdpContent(sdpContent: String): MutableMap<String, Any> {
+    fun parseSdpContent(sdpContent: String): SDP {
         log.info("Parsing SDP content$CRLF$sdpContent")
-        val sdpFields = mutableMapOf<String, Any>()
-
-        val attributes = mutableListOf<String>()
+        val sdp = SDP()
+        var attrCount = 0
 
         // 줄별로 처리
         val lines = sdpContent.split(Regex("\r\n|\n"))
@@ -312,47 +328,44 @@ object RtspSdpParser {
 
                 when (type) {
                     'v' -> { // Protocol Version
-                        sdpFields["version"] = value
-                        log.info("Found version: $value")
+                        sdp.version = value
+                        attrCount++
                     }
 
                     'o' -> { // Origin
-                        sdpFields["origin"] = value
-                        log.info("Found origin: $value")
+                        sdp.origin = value
+                        attrCount++
                     }
 
                     's' -> { // Session Name
-                        sdpFields["sessionName"] = value
-                        log.info("Found session name: $value")
+                        sdp.sessionName = value
+                        attrCount++
                     }
 
                     'i' -> { // Session Information
-                        sdpFields["sessionInfo"] = value
-                        log.info("Found session info: $value")
+                        sdp.sessionInfo
+                        attrCount++
                     }
 
                     'c' -> { // Connection Information
-                        sdpFields["connectionInfo"] = value
-                        log.info("Found connection info: $value")
+                        sdp.connectionInfo
+                        attrCount++
                     }
 
                     't' -> { // Timing
-                        sdpFields["timing"] = value
-                        log.info("Found timing: $value")
+                        sdp.timing = value
+                        attrCount++
                     }
 
                     'm' -> { // Media Description
-                        if (!sdpFields.containsKey("media")) {
-                            sdpFields["media"] = value
-                        } else {
-                            sdpFields["media${sdpFields.size}"] = value
-                        }
-                        log.info("Found media description: $value")
+                        sdp.media = value
+                        attrCount++
                     }
 
                     'a' -> { // Attribute
                         // 미디어 속성을 별도로 처리 (미디어 별로 구분하는 경우)
-                        attributes.add(value)
+                        sdp.attributes.add(value)
+                        attrCount++
                     }
 
                     else -> continue
@@ -360,12 +373,12 @@ object RtspSdpParser {
             }
         }
 
-        if (attributes.isNotEmpty()) {
-            sdpFields["attributes"] = attributes
+        if (sdpContent.isEmpty()) {
+            throw ApiAccessException(HttpStatus.INTERNAL_SERVER_ERROR, "Sdp content is empty.")
         }
 
-        log.info("SDP parsing completed, found ${sdpFields.size} fields")
-        return sdpFields
+        log.info("SDP parsing completed, found $attrCount fields.")
+        return sdp
     }
 }
 
@@ -376,17 +389,25 @@ enum class RTSPMethod {
     DESCRIBE, SETUP, PLAY, TEARDOWN, OPTIONS, PAUSE
 }
 
+class SDP {
+    var version: String = ""
+    var origin: String = ""
+    var sessionName: String = ""
+    var sessionInfo: String = ""
+    var connectionInfo: String = ""
+    var timing: String = ""
+    var media: String = ""
+    var attributes: MutableList<String> = mutableListOf()
+}
+
 fun main() {
     try {
-        val rtspUrl = "rtsp://admin:eldigm2211!@223.171.45.247:554/cam/realmonitor?channel=1&subtype=2"
+        val rtspUrl = "rtsp://210.99.70.120:1935/live/cctv001.stream"
 //        val rtspUrl = "rtsp://admin:oms20190211@192.168.182.200/video62"
-        val response = RtspTCPConnector.connectRTSP(rtspUrl, RTSPMethod.OPTIONS)
+        val response = RtspTCPConnector.getSDPContent(rtspUrl)
         val sdpData = RtspSdpParser.parseSdpContent(response)
 
-        println("Parsed SDP fields:")
-        for ((key, value) in sdpData) {
-            println("$key: $value")
-        }
+        println("Parsed SDP fields: ${gson.toJson(sdpData)}")
     } catch (e: IOException) {
         println("Error parsing SDP from RTSP URL $e")
     }

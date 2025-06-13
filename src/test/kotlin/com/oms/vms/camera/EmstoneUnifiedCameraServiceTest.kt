@@ -22,12 +22,8 @@ import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.data.mongodb.core.ReactiveMongoTemplate
 import org.springframework.data.mongodb.core.query.Criteria
 import org.springframework.data.mongodb.core.query.Query
-import org.springframework.http.HttpHeaders
-import org.springframework.http.MediaType
 import org.springframework.test.context.ActiveProfiles
-import org.springframework.web.reactive.function.client.WebClient
 import java.time.LocalDateTime
-import java.util.*
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 
@@ -115,7 +111,7 @@ class EmstoneUnifiedCameraServiceTest {
             assertEquals(document.getString("address"), it.channelName, "Channel name should be correctly mapped")
             assertEquals(document.getBoolean("has_ptz"), it.supportsPTZ, "PTZ support should be correctly mapped")
             assertEquals(document.getBoolean("has_signal"), it.isEnabled, "Enabled status should be correctly mapped")
-            assertNotNull(it.rtspUrl, "RTSP URL should exist")
+            assertNotNull(it.rtsp, "RTSP URL should exist")
 
             log.info(
                 "Camera ${it.channelID} detailed validation: name=${it.name}, channel=${it.channelName}, " +

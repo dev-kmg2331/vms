@@ -71,7 +71,7 @@ class NaizVms(
     }
 
     override suspend fun getRtspURL(id: String): String {
-        val vmsConfig = getVmsConfig()
+        getVmsConfig()
         return ""
     }
 
