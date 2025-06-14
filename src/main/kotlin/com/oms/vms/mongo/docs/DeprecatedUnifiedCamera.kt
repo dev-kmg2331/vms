@@ -74,7 +74,7 @@ data class DeprecatedUnifiedCamera(
             ipAddress = unifiedCamera.ipAddress,
             port = unifiedCamera.port,
             httpPort = unifiedCamera.httpPort,
-            rtspUrl = unifiedCamera.rtsp,
+            rtspUrl = unifiedCamera.rtsp?.url,
             isEnabled = unifiedCamera.isEnabled,
             status = unifiedCamera.status,
             supportsPTZ = unifiedCamera.supportsPtz,

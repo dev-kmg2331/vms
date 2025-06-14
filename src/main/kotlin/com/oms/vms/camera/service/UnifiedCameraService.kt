@@ -10,8 +10,7 @@ import com.oms.vms.mongo.config.toResponse
 import com.oms.vms.mongo.docs.*
 import com.oms.vms.mongo.repo.FieldMappingRepository
 import com.oms.vms.rtsp.RtspSdpParser
-import com.oms.vms.rtsp.RtspTCPConnector
-import com.oms.vms.rtsp.SDP
+import com.oms.vms.rtsp.RtspConnection
 import format
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.*
@@ -31,6 +30,7 @@ import org.springframework.data.mongodb.core.query.Query
 import org.springframework.http.HttpStatus
 import org.springframework.stereotype.Service
 import org.springframework.web.multipart.MultipartFile
+import java.net.Socket
 import java.time.LocalDateTime
 
 /**
@@ -207,12 +207,7 @@ class UnifiedCameraService(
         // 데이터베이스에서 문서 업데이트
         val updatedUnifiedCamera = converter.read(UnifiedCamera::class.java, document)
             .apply {
-                rtsp = RtspData(
-                    url = vms.getRtspURL(vmsCamera["_id"] as String),
-                    codec = TODO(),
-                    width = TODO(),
-                    height = TODO()
-                )
+                rtsp = getRtspData(vms.getRtspURL(vmsCamera.getString("_id")))
                 updatedAt = LocalDateTime.now().format()
             }
         return mongoTemplate.findAndReplace(
@@ -244,12 +239,7 @@ class UnifiedCameraService(
                 collectionName = VMS_CAMERA,
                 documentId = vmsCamera.getString("_id")
             ),
-            rtsp = RtspData(
-                url = vms.getRtspURL(vmsCamera.getString("_id")),
-                codec = TODO(),
-                width = TODO(),
-                height = TODO(),
-            ),
+            rtsp = getRtspData(vms.getRtspURL(vmsCamera.getString("_id")))
         )
 
         log.info("Synchronizing new unified camera for channel ID: $channelID. _id: ${unifiedCamera.id}")
@@ -304,9 +294,36 @@ class UnifiedCameraService(
         }
     }
 
-    private fun getRtspSDPData(rtspUrl: String): SDP {
-        val response = RtspTCPConnector.getSDPContent(rtspUrl)
-        return RtspSdpParser.parseSdpContent(response)
+
+    /**
+     * SDP 데이터 조회 후 RtspData 객체로 변환.
+     *
+     * @see RtspConnection
+     * @see RtspSdpParser
+     * */
+    private fun getRtspData(rtspUrl: String): RtspData? {
+        if (rtspUrl.isBlank() || rtspUrl.isEmpty()) {
+            return null
+        }
+
+        val connection = RtspConnection(rtspUrl)
+
+        val response = connection.getSDPContent()
+        val sdp = RtspSdpParser.parseSdpContent(response) ?: return RtspData(
+            url = rtspUrl,
+            codec = "",
+            width = "",
+            height = "",
+        )
+
+        return RtspData(
+            url = rtspUrl,
+            codec = sdp.media,
+            // TODO: FIX THIS
+            width = "",
+            // TODO: FIX THIS
+            height = "",
+        )
     }
 
     /**

@@ -16,7 +16,7 @@ java {
 
 repositories {
     mavenCentral()
-
+    // add gradle.properties to project
     maven {
         name = 'oms-nexus'
         url = uri('https://ompass.kr:5443/repository/omeye-common/')
@@ -64,6 +64,20 @@ dependencies {
 
     // JNA
     implementation 'net.java.dev.jna:jna:5.17.0'
+
+    // JavaCV (OpenCV)
+    implementation("org.bytedeco:javacv:1.5.9")
+    // Java FFMPEG
+    implementation("org.bytedeco:ffmpeg:6.0-1.5.9")
+
+    // 플랫폼별 (하나만 선택)
+    // Windows
+    implementation("org.bytedeco:ffmpeg:6.0-1.5.9:windows-x86_64")
+    implementation("org.bytedeco:opencv:4.7.0-1.5.9:windows-x86_64")
+
+    // Linux
+    // implementation("org.bytedeco:ffmpeg:6.0-1.5.9:linux-x86_64") // Linux
+    implementation("org.bytedeco:opencv:4.7.0-1.5.9:linux-x86_64")
 
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     testImplementation 'io.projectreactor:reactor-test'

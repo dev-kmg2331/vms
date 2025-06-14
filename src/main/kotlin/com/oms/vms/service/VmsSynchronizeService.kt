@@ -113,7 +113,7 @@ class VmsSynchronizeService(
     suspend fun analyzeUnifiedFieldStructure(): Document {
         val emptyUnifiedCamera = UnifiedCamera(
             vms = "",
-            rtsp = "",
+            rtsp = null,
             sourceReference = SourceReference(
                 collectionName = "",
                 documentId = ""
