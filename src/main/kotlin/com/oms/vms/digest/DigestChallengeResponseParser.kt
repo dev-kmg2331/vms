@@ -2,11 +2,11 @@ package com.oms.vms.digest
 
 import com.oms.api.exception.ApiAccessException
 import org.springframework.http.HttpStatus
-import java.nio.charset.StandardCharsets
-import java.security.MessageDigest
-import java.security.NoSuchAlgorithmException
+import java.util.concurrent.atomic.AtomicInteger
 
-object DigestChallengeResponseParser {
+class DigestChallengeResponseParser {
+    private val counter = AtomicInteger(0)
+
     fun parseDigestChallenge(authHeader: String): Map<String, String> {
         val authParams: MutableMap<String, String> = HashMap()
         val tokens =
@@ -24,7 +24,7 @@ object DigestChallengeResponseParser {
     }
 
     fun createDigestAuthHeader(
-        method: String = "GET",
+        method: String = "DESCRIBE", // RTSP용으로 DESCRIBE 변경
         username: String,
         password: String,
         authParams: Map<String, String>,
@@ -33,9 +33,9 @@ object DigestChallengeResponseParser {
         try {
             val realm = authParams["realm"] ?: throw RuntimeException("Realm is required for Digest authentication")
             val nonce = authParams["nonce"] ?: throw RuntimeException("Nonce is required for Digest authentication")
-            val qop = authParams["qop"] // qop는 선택적
-            val opaque = authParams["opaque"] // opaque는 선택적
-            val algorithm = authParams.getOrDefault("algorithm", "MD5") // 기본적으로 MD5를 사용
+            val qop = authParams["qop"]?.replace("\"", "")?.trim() // 따옴표 제거
+            val opaque = authParams["opaque"]?.replace("\"", "")?.trim() // 따옴표 제거
+            val algorithm = authParams.getOrDefault("algorithm", "MD5").replace("\"", "").trim()
 
             // HA1 = hash(username:realm:password)
             val ha1 = hash("$username:$realm:$password", algorithm)
@@ -48,10 +48,10 @@ object DigestChallengeResponseParser {
             val authHeader =
                 StringBuilder("Digest username=\"$username\", realm=\"$realm\", nonce=\"$nonce\", uri=\"$uri\"")
 
-            if (qop != null) {
+            if (!qop.isNullOrEmpty()) {
                 // qop가 있는 경우 (RFC 2617 표준)
-                val nc = "00000001" // 요청 카운터
-                val cnonce = nonce // 간단하게 nonce를 cnonce로 사용
+                val nc = String.format("%08d", counter.addAndGet(1)) // 요청 카운터
+                val cnonce = generateCnonce() // 랜덤 cnonce 생성
                 response = hash("$ha1:$nonce:$nc:$cnonce:$qop:$ha2", algorithm)
 
                 authHeader.append(", qop=$qop, nc=$nc, cnonce=\"$cnonce\"")
@@ -62,7 +62,7 @@ object DigestChallengeResponseParser {
 
             authHeader.append(", response=\"$response\"")
 
-            if (opaque != null) {
+            if (opaque != null && opaque.isNotEmpty()) {
                 authHeader.append(", opaque=\"$opaque\"")
             }
 
@@ -76,18 +76,22 @@ object DigestChallengeResponseParser {
         }
     }
 
-    @Throws(NoSuchAlgorithmException::class)
-    private fun hash(data: String, algorithm: String?): String {
-        val md = MessageDigest.getInstance(algorithm)
-        val digest = md.digest(data.toByteArray(StandardCharsets.UTF_8))
-        return bytesToHex(digest)
+    // 해시 함수 - SHA-256 지원 추가
+    private fun hash(input: String, algorithm: String): String {
+        val digest = when (algorithm.uppercase()) {
+            "MD5" -> java.security.MessageDigest.getInstance("MD5")
+            "SHA-256", "SHA256" -> java.security.MessageDigest.getInstance("SHA-256")
+            else -> java.security.MessageDigest.getInstance("MD5")
+        }
+        val bytes = digest.digest(input.toByteArray(Charsets.UTF_8))
+        return bytes.joinToString("") { "%02x".format(it) }
     }
 
-    private fun bytesToHex(bytes: ByteArray): String {
-        val sb = StringBuilder()
-        for (b in bytes) {
-            sb.append(String.format("%02x", b))
-        }
-        return sb.toString()
+    // cnonce 랜덤 생성 함수
+    private fun generateCnonce(): String {
+        val random = java.security.SecureRandom()
+        val bytes = ByteArray(16)
+        random.nextBytes(bytes)
+        return bytes.joinToString("") { "%02x".format(it) }
     }
 }

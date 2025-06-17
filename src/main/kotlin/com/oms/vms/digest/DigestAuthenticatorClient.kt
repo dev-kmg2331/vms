@@ -6,10 +6,6 @@ import org.springframework.http.HttpMethod
 import org.springframework.http.HttpStatusCode
 import org.springframework.web.reactive.function.client.*
 import reactor.core.publisher.Mono
-import java.nio.charset.StandardCharsets
-import java.security.MessageDigest
-import java.security.NoSuchAlgorithmException
-import java.util.*
 
 
 class DigestAuthenticatorClient(
@@ -18,11 +14,12 @@ class DigestAuthenticatorClient(
     private val password: String,
 ) {
     private val log = LoggerFactory.getLogger(this::class.java)
+    private val digestChallengeResponseParser = DigestChallengeResponseParser()
 
     fun makeRequest(uri: String, httpMethod: HttpMethod = HttpMethod.GET): Mono<String> {
         // 1. 첫 번째 요청: 서버로부터 챌린지 응답을 받음
 
-        return webClient.get()
+        return webClient.method(httpMethod)
             .uri(uri)
             .retrieve()
             .onStatus(
@@ -33,12 +30,13 @@ class DigestAuthenticatorClient(
                 Digest401ErrorException::class.java
             ) { e: Digest401ErrorException ->
                 val authHeader = e.getHeader(HttpHeaders.WWW_AUTHENTICATE)
+                log.info("Authentication header: {}", authHeader)
                 if (authHeader.startsWith("Digest")) {
                     // 2. 챌린지 분석 및 인증 헤더 생성
                     val authParams: Map<String, String> =
-                        DigestChallengeResponseParser.parseDigestChallenge(authHeader)
+                        digestChallengeResponseParser.parseDigestChallenge(authHeader)
                     val digestAuthHeader: String =
-                        DigestChallengeResponseParser.createDigestAuthHeader(
+                        digestChallengeResponseParser.createDigestAuthHeader(
                             httpMethod.name(), username, password, authParams, uri
                         )
 

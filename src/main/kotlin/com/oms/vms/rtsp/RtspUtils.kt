@@ -1,7 +1,6 @@
 package com.oms.vms.rtsp
 
 import com.oms.api.exception.ApiAccessException
-import com.oms.logging.gson.gson
 import com.oms.vms.digest.DigestChallengeResponseParser
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
@@ -10,12 +9,28 @@ import java.net.InetSocketAddress
 import java.net.Socket
 import java.util.concurrent.atomic.AtomicInteger
 
+/**
+ * 메인 함수 - 서비스 사용 예시
+ */
+fun main() {
+
+    try {
+//        val rtspUrl = "rtsp://admin:oms20190211@192.168.182.200/video1"
+        val rtspUrl = "rtsp://admin:eldigm2211!@eldigm11.iptime.org:9000/cam/realmonitor?channel=2&subtype=2"
+
+        RTSPStreamingService().startStreaming(rtspUrl)
+
+    } catch (e: Exception) {
+        e.printStackTrace()
+    } finally {
+    }
+}
 
 /**
  * Socket을 사용하여 RTSP URL에서 SDP 데이터를 파싱하는 유틸리티 클래스
  */
 class RtspConnection(
-    val rtspUrl: String
+    var rtspUrl: String
 ) {
     val socket = Socket()
 
@@ -30,6 +45,8 @@ class RtspConnection(
 
     private val cSeq: AtomicInteger = AtomicInteger(0)
 
+    private val digestChallengeResponseParser = DigestChallengeResponseParser()
+
     init {
         val credentials = extractCredentials(rtspUrl)
         this.username = credentials?.first
@@ -40,48 +57,18 @@ class RtspConnection(
         val (host, port, path) = parseRtspUrl(rtspUrl)
         log.info("Creating socket connection to $host:$port")
         socket.connect(InetSocketAddress(host, port), SOCKET_TIMEOUT_MILLS)
-
-    }
-
-    /**
-     * RTSP URL을 통해 DESCRIBE method로 SDP 데이터를 가져온다.
-     *
-     * @throws IOException Socket 연결 또는 파싱 중 오류가 발생한 경우
-     */
-    @Throws(IOException::class)
-    fun getSDPContent(): String {
-        try {
-            // DESCRIBE 요청 (인증 처리 포함)
-            return sendRequestWithDigest(
-                RTSPMethod.DESCRIBE,
-                rtspUrl,
-                username,
-                password
-            )
-        } catch (e: Exception) {
-            log.error("Failed to connect RTSP.", e)
-            throw ApiAccessException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to connect RTSP.")
-        }
     }
 
     /**
      * 인증 처리를 포함한 RTSP 요청을 보냅니다.
      *
      * @param method RTSP 메서드
-     * @param rtspUrl RTSP URL
-     * @param credentials 인증 정보 (username, password)
-     * @param inputStream 서버로부터의 입력 스트림
-     * @param outputStream 서버로의 출력 스트림
+     * @param header TCP Header
      * @return SDP 콘텐츠 문자열
      * @throws IOException 요청 실패 시
      */
-    fun sendRequestWithDigest(
-        method: RTSPMethod,
-        rtspUrl: String,
-        username: String?,
-        password: String?,
-    ): String {
-        val (statusCode, response) = sendRTCPRequest(method, rtspUrl)
+    fun sendRequest(method: RTSPMethod, header: String? = null): String {
+        val (statusCode, response) = sendRTCPRequest(method, rtspUrl, header)
 
         when (statusCode) {
             // 401 Unauthorized 응답 처리 (Digest Authentication 필요)
@@ -100,7 +87,7 @@ class RtspConnection(
                     ?: throw IOException("Failed to parse Digest authentication parameters. url: $rtspUrl")
 
                 // DigestChallengeResponseParser를 사용하여 인증 처리
-                val digestParams = DigestChallengeResponseParser.parseDigestChallenge(wwwAuthHeader)
+                val digestParams = digestChallengeResponseParser.parseDigestChallenge(wwwAuthHeader)
 
                 if (digestParams.isEmpty()) {
                     log.error("WWW-Authenticate header not found in 401 response or no credentials provided. url: $rtspUrl")
@@ -109,12 +96,14 @@ class RtspConnection(
 
                 // Digest 인증을 사용하여 다시 요청
                 log.info("Sending request with Digest Authentication")
-                val digestAuthHeader = DigestChallengeResponseParser.createDigestAuthHeader(
+                val digestAuthHeader = digestChallengeResponseParser.createDigestAuthHeader(
                     method.name, username, password, digestParams, rtspUrl
                 )
 
-                val (digestStatusCode, newContentLength) =
-                    sendRTCPRequest(method, rtspUrl)
+                authHeader = digestAuthHeader
+
+                val (digestStatusCode, digestResponse) =
+                    sendRTCPRequest(method, rtspUrl, header)
 
                 if (digestStatusCode != 200) {
                     log.error("Failed to authenticate with Digest Authentication, status code: $digestStatusCode. url: $rtspUrl")
@@ -124,8 +113,7 @@ class RtspConnection(
                     )
                 }
 
-                authHeader = digestAuthHeader
-                return response
+                return digestResponse
             }
             // 인증 없이 성공
             200 -> return response
@@ -180,10 +168,7 @@ class RtspConnection(
      *
      * @param method RTSP 메서드
      * @param rtspUrl RTSP URL
-     * @param authHeader 인증 헤더 (있는 경우)
-     * @param inputStream 서버로부터의 입력 스트림
-     * @param outputStream 서버로의 출력 스트림
-     * @return 상태 코드, 응답 문자열, Content-Length를 포함한 Triple 객체
+     * @return 상태 코드, 응답 문자열
      */
     fun sendRTCPRequest(
         method: RTSPMethod,
@@ -308,29 +293,25 @@ class RtspConnection(
     }
 
     /**
-     * RTCP 요청을 보내고 응답을 처리합니다.
+     * RTP 요청을 보내고 응답을 처리합니다.
      *
      * @param method RTSP 메서드
      * @param rtspUrl RTSP URL
-     * @param authHeader 인증 헤더 (있는 경우)
-     * @param inputStream 서버로부터의 입력 스트림
-     * @param outputStream 서버로의 출력 스트림
      * @return 상태 코드, 응답 문자열, Content-Length를 포함한 Triple 객체
      */
     fun sendRTPRequest(
         method: RTSPMethod,
-        rtspUrl: String,
-        header: String,
+        header: String? = null,
     ) {
-        val header = buildString {
+        val requestHeader = buildString {
             append("${method.name} $rtspUrl RTSP/1.0$CRLF")
             append("CSeq: ${cSeq.incrementAndGet()}$CRLF")
             append("User-Agent: omsecurity$CRLF")
-            append(header)
+            header?.let { append(header) }
             append(CRLF)
         }
 
-        socket.outputStream.write(header.toByteArray())
+        socket.outputStream.write(requestHeader.toByteArray())
         log.info("Sending $method request")
         socket.outputStream.flush()
     }
@@ -488,21 +469,4 @@ class SDP {
     var timing: String = ""
     var media: String = ""
     var attributes: MutableMap<String, String> = mutableMapOf()
-}
-
-/**
- * 메인 함수 - 서비스 사용 예시
- */
-fun main() {
-    val decoder = H264StreamDecoder()
-    val streamingService = RTSPStreamingService(decoder)
-
-    try {
-        val rtspUrl = "rtsp://210.99.70.120:1935/live/cctv015.stream"
-        streamingService.startStreaming(rtspUrl)
-    } catch (e: Exception) {
-        e.printStackTrace()
-    } finally {
-        streamingService.stopStreaming()
-    }
 }

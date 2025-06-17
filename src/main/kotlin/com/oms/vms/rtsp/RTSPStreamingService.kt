@@ -1,56 +1,107 @@
 package com.oms.vms.rtsp
 
-import org.bytedeco.opencv.opencv_core.Mat
 import org.slf4j.LoggerFactory
-import java.awt.image.BufferedImage
 import java.io.ByteArrayOutputStream
+import java.util.concurrent.ConcurrentLinkedQueue
+import java.util.concurrent.locks.ReentrantLock
+import kotlin.concurrent.withLock
 
 /**
- * RTSP 스트리밍 수신 및 H.264 프레임 처리 서비스
+ * VLC 스타일의 개선된 RTSP 스트리밍 수신 및 H.264 프레임 처리 서비스
+ * 1. SPS/PPS 우선 처리 전략
+ * 2. 버퍼링 전략 적용
  */
-class RTSPStreamingService(
-    // h264 decoder
-    val decoder: H264StreamDecoder
-) {
+class RTSPStreamingService {
     private val log = LoggerFactory.getLogger(this::class.java)
+
+    // 파라미터 셋 상태 관리 (VLC 스타일)
+    private var hasValidSPS = false
+    private var hasValidPPS = false
+    private var spsData: ByteArray? = null
+    private var ppsData: ByteArray? = null
+
+    // 버퍼링 관련
+    private val packetBuffer = ConcurrentLinkedQueue<BufferedPacket>()
+    private val bufferLock = ReentrantLock()
+    private val bufferThreshold = 15  // 15개 패킷 버퍼링 (VLC는 0-48% 버퍼링)
+    private val maxBufferSize = 50    // 최대 50개까지 버퍼링
 
     // 스트리밍 상태 변수들
     private var totalPacketsReceived = 0L
+    private var packetsProcessed = 0L
+    private var packetsDropped = 0L
     private var frameCount = 0
     private var startTime = 0L
 
     // TCP 헤더 구분자
     private val CRLF = "\r\n"
 
-    // 프레임 조립 변수들
-    private var currentTimestamp = 0L
-    private var isAssemblingFrame = false
-    private val frameBuffer = ByteArrayOutputStream()
-    private var spsData: ByteArray? = null
-    private var ppsData: ByteArray? = null
-
-    // 현재 I-frame
-    private var currentIFrame: ByteArray? = null
+    // 기존 컴포넌트들
+    private val fuaProcessor = FUAProcessor()
+    private val h264FileWriter = H264FileWriter("C:\\Users\\82103\\FFMPEG\\X86\\test.h264")
 
     // 소켓 연결 객체
     private lateinit var rtspConnection: RtspConnection
 
+    // 버퍼링된 패킷 데이터 클래스
+    data class BufferedPacket(
+        val rtpData: ByteArray,
+        val receivedTime: Long,
+        val sequenceNumber: Int,
+        val timestamp: Long,
+        val marker: Boolean
+    )
+
     /**
      * RTSP 스트리밍을 시작합니다.
-     *
-     * @param rtspUrl RTSP 스트림 URL
      */
     fun startStreaming(rtspUrl: String) {
         try {
-            log.info("Starting RTSP streaming from: $rtspUrl")
+            log.info("🎬 VLC 스타일 RTSP 스트리밍 시작: $rtspUrl")
 
             // start connection
-            rtspConnection = setupRTSPConnection(rtspUrl)
-            val sessionID = performRTSPHandshake(rtspConnection, rtspUrl)
+            rtspConnection = RtspConnection(rtspUrl)
+
+            // DESCRIBE 요청
+            val describe = rtspConnection.sendRequest(RTSPMethod.DESCRIBE)
+            val sdpData = RtspSdpParser.parseSdpContent(describe)!!
+
+            // Track ID
+            val trackId = extractTrackId(sdpData)
+            val setupUrl = "$rtspUrl/trackID=$trackId"
+
+            // SETUP 요청
+            val setupHeader = "Transport: RTP/AVP/TCP;unicast;interleaved=0-1$CRLF"
+            val (setupStatus, setupContent) = rtspConnection.sendRTCPRequest(
+                method = RTSPMethod.SETUP,
+                rtspUrl = setupUrl,
+                header = setupHeader
+            )
+
+            if (setupStatus != 200) {
+                throw RuntimeException("SETUP failed with status: $setupStatus")
+            }
+
+            // Session ID
+            val sessionID = extractSessionId(setupContent)
+            log.info("RTSP session established: $sessionID")
+
+            // PLAY 요청
+            val playHeader = buildString {
+                append("Session: $sessionID$CRLF")
+                append("Range: npt=0.000-$CRLF") // 스트리밍 범위 : 시작
+            }
+
+            rtspConnection.sendRTPRequest(RTSPMethod.PLAY, playHeader)
 
             log.info("RTSP Stream session ID: $sessionID")
 
-            startStreamingLoop(rtspConnection)
+            // 1단계: SPS/PPS 대기
+            waitForParameterSets()
+
+            // 2단계: 버퍼링 시작
+            log.info("📶 버퍼링 시작...")
+            startStreamingLoop()
 
         } catch (e: Exception) {
             log.error("Failed to start RTSP streaming", e)
@@ -59,63 +110,100 @@ class RTSPStreamingService(
     }
 
     /**
-     * RTSP 연결을 설정하고 SDP를 가져옵니다.
+     * VLC 스타일: SPS/PPS를 먼저 찾을 때까지 대기
      */
-    private fun setupRTSPConnection(rtspUrl: String): RtspConnection {
-        val rtspConnection = RtspConnection(rtspUrl)
-        val response = rtspConnection.getSDPContent()
-        val sdpData = RtspSdpParser.parseSdpContent(response)
-            ?: throw IllegalStateException("SDP content parsing failed")
+    private fun waitForParameterSets() {
+        log.info("📋 파라미터 셋 검색 중...")
+        val timeout = System.currentTimeMillis() + 10000 // 10초 타임아웃
+        val buffer = ByteArray(1024 * 64)
 
-        log.info("SDP parsed successfully")
-        return rtspConnection
+        while (!hasValidSPS || !hasValidPPS) {
+            if (System.currentTimeMillis() > timeout) {
+                log.warn("⚠️ 파라미터 셋 타임아웃 - 일반 처리로 진행")
+                break
+            }
+
+            try {
+                val bytesRead = rtspConnection.socket.inputStream.read(buffer)
+                if (bytesRead == -1) break
+
+                processRTPPacketsForParameterSets(buffer, bytesRead)
+
+                if (hasValidSPS && hasValidPPS) {
+                    log.info("✅ found NAL_SPS & NAL_PPS - 파라미터 셋 준비 완료")
+                    break
+                }
+            } catch (e: Exception) {
+                log.error("파라미터 셋 검색 중 오류: ${e.message}")
+                break
+            }
+        }
     }
 
     /**
-     * RTSP 핸드셰이크를 수행합니다 (SETUP, PLAY).
+     * 파라미터 셋 검색을 위한 특별 처리
      */
-    private fun performRTSPHandshake(rtspConnection: RtspConnection, rtspUrl: String): String {
-        // SDP에서 trackID 추출
-        val response = rtspConnection.getSDPContent()
-        val sdpData = RtspSdpParser.parseSdpContent(response)!!
+    private fun processRTPPacketsForParameterSets(buffer: ByteArray, bytesRead: Int) {
+        var offset = 0
 
-        val trackId = extractTrackId(sdpData)
-        val setupUrl = "$rtspUrl/trackID=$trackId"
-
-        // SETUP 요청
-        val setupHeader = "Transport: RTP/AVP/TCP;unicast;interleaved=0-1$CRLF"
-        val (setupStatus, setupContent) = rtspConnection.sendRTCPRequest(
-            method = RTSPMethod.SETUP,
-            rtspUrl = setupUrl,
-            header = setupHeader
-        )
-
-        if (setupStatus != 200) {
-            throw RuntimeException("SETUP failed with status: $setupStatus")
+        while (offset < bytesRead && (!hasValidSPS || !hasValidPPS)) {
+            if (buffer[offset] == 0x24.toByte()) {
+                offset = processParameterSetPacket(buffer, offset, bytesRead)
+            } else {
+                offset++
+            }
         }
-
-        val sessionID = extractSessionId(setupContent)
-        log.info("RTSP session established: $sessionID")
-
-        // PLAY 요청
-        val playHeader = buildString {
-            append("Session: $sessionID$CRLF")
-            append("Range: npt=0.000-$CRLF") // 스트리밍 범위 : 시작
-        }
-
-        rtspConnection.sendRTPRequest(RTSPMethod.PLAY, rtspUrl, playHeader)
-
-        return sessionID
     }
 
     /**
-     * 실제 스트리밍 루프를 실행합니다.
+     * 파라미터 셋 전용 패킷 처리
      */
-    private fun startStreamingLoop(rtspConnection: RtspConnection) {
-        val buffer = ByteArray(4096)
+    private fun processParameterSetPacket(buffer: ByteArray, offset: Int, bytesRead: Int): Int {
+        if (offset + 4 > bytesRead) return offset + 1
+
+        val channel = buffer[offset + 1].toInt() and 0xFF
+        val length = ((buffer[offset + 2].toInt() and 0xFF) shl 8) or
+                (buffer[offset + 3].toInt() and 0xFF)
+
+        if (channel == 0 && offset + 4 + length <= bytesRead) {
+            val rtpPacketData = buffer.sliceArray(offset + 4 until offset + 4 + length)
+
+            val (nalType, h264Data) = extractH264(rtpPacketData) ?: return offset + 4 + length
+
+            when (nalType) {
+                7 -> {
+                    if (validateSPS(h264Data)) {
+                        spsData = h264Data
+                        hasValidSPS = true
+                        h264FileWriter.writeNALUnit(nalType, h264Data)
+                        log.info("✅ found NAL_SPS - 유효한 SPS 발견")
+                    }
+                }
+
+                8 -> {
+                    if (hasValidSPS && validatePPS(h264Data)) {
+                        ppsData = h264Data
+                        hasValidPPS = true
+                        h264FileWriter.writeNALUnit(nalType, h264Data)
+                        log.info("✅ found NAL_PPS - 유효한 PPS 발견")
+                    }
+                }
+            }
+
+            return offset + 4 + length
+        }
+
+        return offset + 1
+    }
+
+    /**
+     * 실제 스트리밍 루프를 실행합니다 (버퍼링 적용)
+     */
+    private fun startStreamingLoop() {
+        val buffer = ByteArray(1024 * 64) // 64 KB
         startTime = System.currentTimeMillis()
 
-        log.info("Starting streaming loop...")
+        log.info("📺 버퍼링 스트리밍 루프 시작...")
 
         while (true) {
             try {
@@ -125,7 +213,7 @@ class RTSPStreamingService(
                     break
                 }
 
-                processRTPPackets(buffer, bytesRead)
+                processRTPPacketsWithBuffering(buffer, bytesRead)
 
             } catch (e: Exception) {
                 log.error("Error in streaming loop: ${e.message}")
@@ -135,24 +223,29 @@ class RTSPStreamingService(
     }
 
     /**
-     * 수신된 데이터에서 RTP 패킷들을 처리합니다.
+     * 버퍼링이 적용된 RTP 패킷 처리
      */
-    private fun processRTPPackets(buffer: ByteArray, bytesRead: Int) {
+    private fun processRTPPacketsWithBuffering(buffer: ByteArray, bytesRead: Int) {
         var offset = 0
 
         while (offset < bytesRead) {
             if (buffer[offset] == 0x24.toByte()) {
-                offset = processRTPOverTCP(buffer, offset, bytesRead)
+                offset = bufferRTPPacket(buffer, offset, bytesRead)
             } else {
                 offset++
             }
         }
+
+        // 버퍼링 임계값 확인
+        if (packetBuffer.size >= bufferThreshold) {
+            processBufferedPackets()
+        }
     }
 
     /**
-     * RTP over TCP 패킷을 처리합니다.
+     * RTP 패킷을 버퍼에 저장
      */
-    private fun processRTPOverTCP(buffer: ByteArray, offset: Int, bytesRead: Int): Int {
+    private fun bufferRTPPacket(buffer: ByteArray, offset: Int, bytesRead: Int): Int {
         if (offset + 4 > bytesRead) return offset + 1
 
         val channel = buffer[offset + 1].toInt() and 0xFF
@@ -163,9 +256,28 @@ class RTSPStreamingService(
             totalPacketsReceived++
 
             val rtpPacketData = buffer.sliceArray(offset + 4 until offset + 4 + length)
-            processRTPPacket(rtpPacketData)
 
-            printStatistics() // 통계 출력
+            // RTP 헤더 파싱하여 순서 정보 추출
+            val header = parseRTPHeader(rtpPacketData, 0)
+            if (header != null) {
+                val bufferedPacket = BufferedPacket(
+                    rtpData = rtpPacketData,
+                    receivedTime = System.currentTimeMillis(),
+                    sequenceNumber = header.sequenceNumber,
+                    timestamp = header.timestamp,
+                    marker = header.marker
+                )
+
+                bufferLock.withLock {
+                    if (packetBuffer.size < maxBufferSize) {
+                        packetBuffer.offer(bufferedPacket)
+                    } else {
+                        // 버퍼가 가득 차면 강제 처리
+                        processBufferedPackets()
+                        packetBuffer.offer(bufferedPacket)
+                    }
+                }
+            }
 
             return offset + 4 + length
         }
@@ -174,283 +286,198 @@ class RTSPStreamingService(
     }
 
     /**
-     * 개별 RTP 패킷을 처리합니다.
+     * 버퍼링된 패킷들을 순서대로 처리
      */
-    private fun processRTPPacket(rtpPacketData: ByteArray) {
-        if (rtpPacketData.size < 12) return
+    private fun processBufferedPackets() {
+        val packetsToProcess = mutableListOf<BufferedPacket>()
 
-        val timestamp = extractTimestamp(rtpPacketData)
-        val rtpPayload = extractRTPPayload(rtpPacketData, 0, rtpPacketData.size)
-        val h264Data = extractH264FromRTP(rtpPayload) ?: return
+        bufferLock.withLock {
+            // 버퍼에서 모든 패킷 추출
+            while (packetBuffer.isNotEmpty()) {
+                packetsToProcess.add(packetBuffer.poll())
+            }
+        }
+
+        if (packetsToProcess.isEmpty()) return
+
+        // 시퀀스 번호로 정렬 (VLC 스타일 순서 보장)
+        packetsToProcess.sortBy { it.sequenceNumber }
+
+        val bufferProgress = minOf(100, (packetsToProcess.size * 100) / bufferThreshold)
+        log.debug("📶 버퍼링 $bufferProgress% - ${packetsToProcess.size}개 패킷 처리")
+
+        // 순서대로 처리
+        packetsToProcess.forEach { packet ->
+            processOrderedRTPPacket(packet.rtpData)
+            packetsProcessed++
+        }
+
+        // 주기적 통계 출력
+        if (packetsProcessed % 1000 == 0L) {
+            printBufferingStatistics()
+        }
+    }
+
+    /**
+     * 순서가 보장된 RTP 패킷 처리
+     */
+    private fun processOrderedRTPPacket(rtpPacket: ByteArray) {
+        if (rtpPacket.size < 12) return
+
+        val (nalType, h264Data) = extractH264(rtpPacket) ?: return
 
         if (h264Data.size < 5) return
 
-        val nalType = h264Data[4].toInt() and 0x1F
-
-        // 타임스탬프 변화로 새 프레임 시작 감지
-        if (isNewFrame(timestamp)) {
-            completeCurrentFrame()
-        }
-
-        processNALUnit(nalType, h264Data, timestamp)
-    }
-
-    /**
-     * NAL 유닛 타입별로 처리합니다.
-     */
-    private fun processNALUnit(nalType: Int, h264Data: ByteArray, timestamp: Long) {
+        // 파라미터 셋이 있을 때만 프레임 처리 (VLC 스타일)
         when (nalType) {
-            7 -> { // SPS
-                spsData = h264Data
-                log.info("SPS received: ${h264Data.size} bytes")
+            7, 8 -> {
+                // 파라미터 셋은 항상 처리
+                h264FileWriter.writeNALUnit(nalType, h264Data)
             }
 
-            8 -> { // PPS
-                ppsData = h264Data
-                log.info("PPS received: ${h264Data.size} bytes")
-            }
-
-            5 -> { // I-frame
-                startNewFrame(h264Data, timestamp)
-                log.info("I-frame started")
-            }
-
-            1 -> { // P-frame
-                if (isAssemblingFrame) {
-                    frameBuffer.write(h264Data)
+            5, 1 -> {
+                // 프레임 데이터는 파라미터 셋이 있을 때만 처리
+                if (hasValidSPS && hasValidPPS) {
+                    h264FileWriter.writeNALUnit(nalType, h264Data)
+                    frameCount++
                 } else {
-                    startNewFrame(h264Data, timestamp)
-                    log.info("P-frame started")
+                    log.debug("⚠️ 파라미터 셋 없이 프레임 데이터 수신 - 무시")
+                    packetsDropped++
                 }
             }
 
-            28 -> { // FU-A
-                if (h264Data.isNotEmpty()) {
-                    if (isAssemblingFrame) {
-                        frameBuffer.write(h264Data)
-                    } else {
-                        startNewFrame(h264Data, timestamp)
-                    }
+            28 -> {
+                // FU-A는 파라미터 셋이 있을 때만 처리
+                if (hasValidSPS && hasValidPPS) {
+                    h264FileWriter.writeNALUnit(nalType, h264Data)
+                } else {
+                    log.debug("⚠️ 파라미터 셋 없이 FU-A 수신 - 무시")
+                    packetsDropped++
                 }
             }
 
             else -> {
-                // 기타 NAL 유닛들 (SEI, Access Unit Delimiter 등)
-                if (isAssemblingFrame) {
-                    frameBuffer.write(h264Data)
-                }
+                h264FileWriter.writeNALUnit(nalType, h264Data)
             }
         }
-
-        currentTimestamp = timestamp
     }
 
     /**
-     * 새로운 프레임인지 확인합니다.
+     * SPS 유효성 검증
      */
-    private fun isNewFrame(timestamp: Long): Boolean {
-        return currentTimestamp != 0L && timestamp != currentTimestamp
+    private fun validateSPS(spsData: ByteArray): Boolean {
+        return spsData.size > 4 &&
+                (spsData[0].toInt() and 0x1F) == 7 &&
+                (spsData[1].toInt() and 0x80) == 0 // profile_idc 유효성
     }
 
     /**
-     * 현재 조립 중인 프레임을 완료 처리합니다.
+     * PPS 유효성 검증
      */
-    private fun completeCurrentFrame() {
-        if (isAssemblingFrame && frameBuffer.size() > 0) {
-            processCompletedFrame(frameBuffer.toByteArray(), ++frameCount)
-            frameBuffer.reset()
-        }
-        isAssemblingFrame = false
+    private fun validatePPS(ppsData: ByteArray): Boolean {
+        return ppsData.size > 2 &&
+                (ppsData[0].toInt() and 0x1F) == 8
     }
 
     /**
-     * 새로운 프레임을 시작합니다.
+     * RTP 헤더 파싱 (기존 로직 유지)
      */
-    private fun startNewFrame(h264Data: ByteArray, timestamp: Long) {
-        frameBuffer.reset()
-        frameBuffer.write(h264Data)
-        isAssemblingFrame = true
-        currentTimestamp = timestamp
-    }
+    private fun parseRTPHeader(buffer: ByteArray, offset: Int): RTPHeader? {
+        if (buffer.size < 12) return null
 
-    /**
-     * 완성된 프레임을 처리합니다.
-     * 여기서 실제 프레임 디코딩, 파일 저장 등을 수행할 수 있습니다.
-     */
-    private fun processCompletedFrame(frameData: ByteArray, frameNumber: Int) {
-        if (frameData.size < 5) return
+        val firstByte = buffer[offset].toInt() and 0xFF
+        val version = (firstByte shr 6) and 0x03
+        val hasPadding = (firstByte and 0x20) != 0
+        val hasExtension = (firstByte and 0x10) != 0
+        val csrcCount = firstByte and 0x0F
 
-        // 프레임 타입 확인
-        val nalType = frameData[4].toInt() and 0x1F
-        val frameType = when (nalType) {
-            5 -> "I-frame"
-            1 -> "P-frame"
-            else -> "Other"
+        if (version != 2) {
+            log.warn("Unsupported RTP version: $version")
+            return null
         }
 
-        if (nalType == 5) {
-            currentIFrame = frameData
+        val secondByte = buffer[offset + 1].toInt() and 0xFF
+        val marker = (secondByte and 0x80) != 0
+        val payloadType = secondByte and 0x7F
+
+        val sequenceNumber = ((buffer[offset + 2].toInt() and 0xFF) shl 8) or
+                (buffer[offset + 3].toInt() and 0xFF)
+
+        val timestamp = ((buffer[offset + 4].toInt() and 0xFF).toLong() shl 24) or
+                ((buffer[offset + 5].toInt() and 0xFF).toLong() shl 16) or
+                ((buffer[offset + 6].toInt() and 0xFF).toLong() shl 8) or
+                (buffer[offset + 7].toInt() and 0xFF).toLong()
+
+        val ssrc = ((buffer[offset + 8].toInt() and 0xFF).toLong() shl 24) or
+                ((buffer[offset + 9].toInt() and 0xFF).toLong() shl 16) or
+                ((buffer[offset + 10].toInt() and 0xFF).toLong() shl 8) or
+                (buffer[offset + 11].toInt() and 0xFF).toLong()
+
+        var headerLength = 12 + (csrcCount * 4)
+
+        if (hasExtension) {
+            if (offset + headerLength + 4 > buffer.size) return null
+            val extensionLength = ((buffer[offset + headerLength + 2].toInt() and 0xFF) shl 8) or
+                    (buffer[offset + headerLength + 3].toInt() and 0xFF)
+            headerLength += 4 + (extensionLength * 4)
         }
 
-        log.info("🎬 Frame #$frameNumber completed: $frameType, ${frameData.size} bytes")
-
-        // TODO: 여기서 실제 프레임 처리
-
-        // I-frame or P-frame
-        if (nalType == 1 || nalType == 5) {
-            // decode frame
-
-            if (spsData == null) {
-                log.warn("cannot decode $frameType. SPS data is null.")
-                return
-            }
-
-            if (ppsData == null) {
-                log.warn("cannot decode $frameType. PPS data is null.")
-                return
-            }
-
-            decoder.decodeFrame(frameData, spsData!!, ppsData!!, frameNumber)
-        }
-
+        return RTPHeader(
+            version, hasPadding, hasExtension, csrcCount, marker, payloadType,
+            sequenceNumber, timestamp, ssrc, headerLength
+        )
     }
 
     /**
-     * RTP 패킷에서 페이로드 부분만 추출합니다.
-     *
-     *                         [ RTP 헤더 구조 ]
-     * byte                byte                byte                byte
-     *  0                   1                   2                   3
-     *  0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
-     * +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-     * |V=2|P|X|  CC   |M|     PT      |       sequence number         |
-     * +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-     * |                           timestamp                           |
-     * +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-     * |           synchronization source (SSRC) identifier          |
-     * +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-     *
-     * RTP 헤더(12바이트)를 제거하고 실제 H.264 데이터만 반환합니다.
+     * H.264 추출 로직 (기존 유지, FU-A 처리 포함)
      */
-    private fun extractRTPPayload(buffer: ByteArray, offset: Int, length: Int): ByteArray {
-        // RTP 헤더는 최소 12바이트 (고정 헤더만, 확장 헤더는 별도)
-        if (length < 12) return ByteArray(0)
+    private fun extractH264(rtpPacket: ByteArray): Pair<Int, ByteArray>? {
+        if (rtpPacket.isEmpty()) return null
 
-        // RTP 헤더 추출 (사용하지 않지만 분석 시 참고용)
-//        val rtpHeader = analyzeRTPHeader(buffer.sliceArray(offset until offset + 12))
-//        log.info("$rtpHeader")
+        val header = parseRTPHeader(rtpPacket, 0) ?: return null
 
-        // RTP 페이로드 시작 위치 = RTP 헤더(12바이트) 다음
-        val payloadOffset = offset + 12
-        // 실제 H.264 데이터 길이 = 전체 길이 - RTP 헤더 길이
-        val payloadLength = length - 12
+        var payloadLength = rtpPacket.size - header.headerLength
 
-        return if (payloadLength > 0) {
-            // RTP 페이로드 부분만 추출하여 반환
-            buffer.sliceArray(payloadOffset until payloadOffset + payloadLength)
-        } else {
-            // 페이로드가 없는 경우 빈 배열 반환
-            ByteArray(0)
+        if (header.hasPadding && payloadLength > 0) {
+            val paddingLength = rtpPacket[rtpPacket.size - 1].toInt() and 0xFF
+            payloadLength -= paddingLength
         }
-    }
 
-    /**
-     * RTP 페이로드에서 H.264 NAL 유닛을 추출합니다.
-     * RFC 6184 H.264 RTP Payload Format에 따라 처리합니다.
-     */
-    private fun extractH264FromRTP(rtpPayload: ByteArray): ByteArray? {
-        // 빈 페이로드는 처리할 수 없음
-        if (rtpPayload.isEmpty()) return null
+        if (payloadLength == 0) {
+            throw RuntimeException("RTP Header payload is empty.")
+        }
 
-        // NAL 유닛 타입 추출 (첫 바이트의 하위 5비트)
+        val rtpPayload = rtpPacket.sliceArray(header.headerLength until header.headerLength + payloadLength)
         val nalUnitType = rtpPayload[0].toInt() and 0x1F
 
-        return when (nalUnitType) {
-            // Single NAL Unit (타입 1-23): 하나의 완전한 NAL 유닛
-            in 1..23 -> {
-                // NAL start code(4바이트) + 기존 페이로드를 합친 새 배열 생성
-                val result = ByteArray(rtpPayload.size + 4)
+        if (nalUnitType == 28) {
+            // FU-A 처리
+            val completeNal =
+                fuaProcessor.processFUA(rtpPayload, header.sequenceNumber, header.timestamp, header.marker)
 
-                // H.264 NAL start code 추가 (0x00000001)
-                // 이 코드로 NAL 유닛의 시작을 표시
-                result[0] = 0x00
-                result[1] = 0x00
-                result[2] = 0x00
-                result[3] = 0x01
-
-                // 원본 RTP 페이로드를 NAL start code 뒤에 복사
-                System.arraycopy(rtpPayload, 0, result, 4, rtpPayload.size)
-                result
-            }
-
-            // FU-A (Fragmentation Unit): 큰 NAL 유닛을 여러 RTP 패킷으로 분할
-            28 -> {
-                // FU-A는 최소 2바이트 헤더 필요 (FU Indicator + FU Header)
-                if (rtpPayload.size < 2) return null
-
-                // FU Indicator: 첫 번째 바이트 (NAL 헤더 정보 포함)
-                val fuIndicator = rtpPayload[0]
-                // FU Header: 두 번째 바이트 (분할 정보 포함)
-                val fuHeader = rtpPayload[1]
-
-                // FU Header에서 플래그 비트들 추출
-                val startBit = (fuHeader.toInt() and 0x80) != 0  // 시작 패킷 여부
-                val endBit = (fuHeader.toInt() and 0x40) != 0    // 마지막 패킷 여부
-                val nalType = fuHeader.toInt() and 0x1F          // 원본 NAL 유닛 타입
-
-                if (startBit) {
-                    // 첫 번째 FU-A 패킷: NAL start code와 재구성된 NAL 헤더 추가
-
-                    // 원본 NAL 헤더 재구성: FU Indicator의 상위 3비트 + NAL 타입
-                    val nalHeader = (fuIndicator.toInt() and 0xE0) or nalType
-
-                    // NAL start code(4바이트) + NAL 헤더(1바이트) + 페이로드
-                    val result = ByteArray(rtpPayload.size - 1 + 4)
-
-                    // NAL start code 추가
-                    result[0] = 0x00
-                    result[1] = 0x00
-                    result[2] = 0x00
-                    result[3] = 0x01
-                    // 재구성된 NAL 헤더 추가
-                    result[4] = nalHeader.toByte()
-
-                    // FU-A 헤더 2바이트를 제외한 나머지 페이로드 복사
-                    System.arraycopy(rtpPayload, 2, result, 5, rtpPayload.size - 2)
-                    result
-                } else {
-                    // 중간 또는 마지막 FU-A 패킷: FU 헤더만 제거하고 페이로드만 반환
-                    val result = ByteArray(rtpPayload.size - 2)
-                    // FU-A 헤더 2바이트를 제외한 나머지 데이터만 복사
-                    System.arraycopy(rtpPayload, 2, result, 0, rtpPayload.size - 2)
-                    result
-                }
-            }
-
-            // 다른 NAL 유닛 타입들 (STAP-A, STAP-B, MTAP 등)은 현재 지원하지 않음
-            else -> {
-                log.warn("Unsupported NAL Unit type: $nalUnitType. ")
-                null
-            }
+            return completeNal?.let { Pair(nalUnitType, it) }
+        } else {
+            return Pair(nalUnitType, rtpPayload)
         }
     }
 
     /**
-     * 통계 정보를 출력합니다.
+     * 버퍼링 통계 정보 출력
      */
-    private fun printStatistics() {
-        if (totalPacketsReceived % 1000 == 0L) {
-            val elapsedSeconds = (System.currentTimeMillis() - startTime) / 1000.0
-            val packetsPerSecond = totalPacketsReceived / elapsedSeconds
-            log.info(
-                "Packets: $totalPacketsReceived, Frames: $frameCount, " +
-                        "Rate: %.1f pkt/s".format(packetsPerSecond)
-            )
-        }
+    private fun printBufferingStatistics() {
+        val elapsedSeconds = (System.currentTimeMillis() - startTime) / 1000.0
+        val packetsPerSecond = packetsProcessed / elapsedSeconds
+        val dropRate = if (totalPacketsReceived > 0) (packetsDropped * 100.0 / totalPacketsReceived) else 0.0
+
+        log.info(
+            "📊 VLC 스타일 통계 - 수신: $totalPacketsReceived, 처리: $packetsProcessed, " +
+                    "드롭: $packetsDropped (${String.format("%.2f", dropRate)}%), " +
+                    "프레임: $frameCount, 속도: ${String.format("%.1f", packetsPerSecond)} pkt/s, " +
+                    "버퍼: ${packetBuffer.size}개"
+        )
     }
 
-    // 유틸리티 메서드들
-
+    // 기존 유틸리티 메서드들 유지
     private fun extractTrackId(sdpData: SDP): String {
         return sdpData.attributes["control"]?.let { control ->
             if (control.startsWith("trackID=")) {
@@ -466,18 +493,34 @@ class RTSPStreamingService(
         return sessionData.split(":")[1].split(";")[0].trim()
     }
 
-    private fun extractTimestamp(rtpPacketData: ByteArray): Long {
-        return ((rtpPacketData[4].toLong() and 0xFF) shl 24) or
-                ((rtpPacketData[5].toLong() and 0xFF) shl 16) or
-                ((rtpPacketData[6].toLong() and 0xFF) shl 8) or
-                (rtpPacketData[7].toLong() and 0xFF)
-    }
-
     /**
      * 스트리밍을 중지합니다.
      */
     fun stopStreaming() {
         log.info("RTSP streaming stopped")
+
+        // 남은 버퍼 처리
+        processBufferedPackets()
+
+        h264FileWriter.close()
         rtspConnection.close()
+
+        log.info("최종 통계: ${getStatistics()}")
+    }
+
+    /**
+     * 처리 통계 반환
+     */
+    fun getStatistics(): Map<String, Any> {
+        return mapOf(
+            "totalPacketsReceived" to totalPacketsReceived,
+            "packetsProcessed" to packetsProcessed,
+            "packetsDropped" to packetsDropped,
+            "frameCount" to frameCount,
+            "hasValidSPS" to hasValidSPS,
+            "hasValidPPS" to hasValidPPS,
+            "bufferSize" to packetBuffer.size,
+            "h264Stats" to h264FileWriter.getStatistics()
+        )
     }
 }

@@ -9,6 +9,7 @@ import com.oms.vms.field_mapping.transformation.FieldTransformation
 import com.oms.vms.mongo.config.toResponse
 import com.oms.vms.mongo.docs.*
 import com.oms.vms.mongo.repo.FieldMappingRepository
+import com.oms.vms.rtsp.RTSPMethod
 import com.oms.vms.rtsp.RtspSdpParser
 import com.oms.vms.rtsp.RtspConnection
 import format
@@ -30,7 +31,6 @@ import org.springframework.data.mongodb.core.query.Query
 import org.springframework.http.HttpStatus
 import org.springframework.stereotype.Service
 import org.springframework.web.multipart.MultipartFile
-import java.net.Socket
 import java.time.LocalDateTime
 
 /**
@@ -308,7 +308,7 @@ class UnifiedCameraService(
 
         val connection = RtspConnection(rtspUrl)
 
-        val response = connection.getSDPContent()
+        val response = connection.sendRequest(RTSPMethod.DESCRIBE)
         val sdp = RtspSdpParser.parseSdpContent(response) ?: return RtspData(
             url = rtspUrl,
             codec = "",
