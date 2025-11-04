@@ -1,6 +1,5 @@
 package com.oms.vms.camera.endpoint
 
-import com.github.f4b6a3.tsid.Tsid
 import com.oms.api.response.ResponseUtil
 import com.oms.vms.VmsType
 import com.oms.vms.camera.convertToExcel
@@ -22,7 +21,6 @@ import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
 import org.springframework.web.multipart.MultipartFile
 import java.io.IOException
-import java.util.UUID
 
 /**
  * 통합 카메라 관리 컨트롤러

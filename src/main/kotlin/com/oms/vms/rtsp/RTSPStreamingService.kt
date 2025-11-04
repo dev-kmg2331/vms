@@ -57,7 +57,7 @@ class RTSPStreamingService {
      */
     fun startStreaming(rtspUrl: String) {
         try {
-            log.info("🎬 VLC 스타일 RTSP 스트리밍 시작: $rtspUrl")
+            log.info("🎬 RTSP 스트리밍 시작: $rtspUrl")
 
             // start connection
             rtspConnection = RtspConnection(rtspUrl)
